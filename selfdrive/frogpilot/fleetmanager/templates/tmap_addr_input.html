@@ -1,0 +1,495 @@
+{% extends "layout.html" %}
+
+{% block title %}
+  腾讯地图导航
+{% endblock %}
+
+{% block main %}
+      <meta charset="utf-8">
+      <meta http-equiv="X-UA-Compatible" content="IE=edge">
+      <meta name="viewport" content="initial-scale=1.0, user-scalable=no, width=device-width">
+      <title>地点搜索与导航</title>
+      <!-- UIkit CSS -->
+      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uikit@3.9.2/dist/css/uikit.min.css" />
+      <!-- UIkit JS -->
+      <script src="https://cdn.jsdelivr.net/npm/uikit@3.9.2/dist/js/uikit.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/uikit@3.9.2/dist/js/uikit-icons.min.js"></script>
+
+      <style type="text/css">
+          body {
+              margin: 0;
+              height: 100%;
+              width: 100%;
+              position: absolute;
+          }
+
+          #mapContainer {
+              width: 100%;
+              height: 80vh;
+              position: relative;
+          }
+
+          .search-box {
+              position: absolute;
+              top: 20px;
+              left: 20px;
+              right: 20px;
+              z-index: 999;
+              background: white;
+              padding: 10px;
+              border-radius: 3px;
+              box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+          }
+
+          .search-results {
+              position: absolute;
+              top: 80px;
+              left: 20px;
+              right: 20px;
+              z-index: 998;
+              background: white;
+              border-radius: 3px;
+              box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+              max-height: 300px;
+              overflow-y: auto;
+              display: none;
+          }
+
+          .search-result-item {
+              padding: 10px;
+              border-bottom: 1px solid #eee;
+              cursor: pointer;
+          }
+
+          .search-result-item:hover {
+              background-color: #f5f5f5;
+          }
+      </style>
+
+      <div class="search-box">
+          <div class="uk-grid-small" uk-grid>
+              <div class="uk-width-1-4">
+                  <select id="save_type" class="uk-select">
+                      <option value="recent">最近</option>
+                      <option value="home">住家</option>
+                      <option value="work">工作</option>
+                  </select>
+              </div>
+              <div class="uk-width-expand">
+                  <div class="uk-inline uk-width-1-1">
+                      <span class="uk-form-icon" uk-icon="icon: search"></span>
+                      <input class="uk-input" type="text" id="keyword"
+                          placeholder="请输入关键字搜索地点"
+                          autocomplete="off">
+                  </div>
+              </div>
+              <div class="uk-width-auto">
+                  <button class="uk-button uk-button-primary" onclick="searchPlace(document.getElementById('keyword').value)">
+                      <span uk-icon="icon: search"></span> 搜索
+                  </button>
+              </div>
+          </div>
+      </div>
+
+      <div id="search-results" class="search-results"></div>
+      <div id="mapContainer"></div>
+
+      <script charset="utf-8" src="https://map.qq.com/api/gljs?v=1.exp&key=BDMBZ-LZQ63-GUG37-OCHES-2ESXV-Q5BVC"></script>
+
+      <script type="text/javascript">
+        var map, marker, infoWindow;
+        var searchMarkers = [];
+        var initialPosition;
+
+        // 修改路径以确保能找到图标
+        var markerIconDefault = '../static/marker.png';
+        var markerIconBlue = '../static/marker.png';  // 使用同一个图标
+
+        // 添加Base64编码的备用图标
+        var markerIconDefaultBase64 = 'data:image/png;base64,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';
+        var markerIconBlueBase64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABkAAAApCAYAAADAk4LOAAAFgUlEQVR4Aa1XA5BjWRTN2oW17d3YaZtr2962HUzbDNpjszW24mRt28p47v7zq/bXZtrp/lWnXr337j3nnnvuFdcMDA8FDh69Xw8BRQnGyDdCY/X1rVpXb1xdGf2CgufMeiF4fY4QTKwvKRLJBPrDw36bQbH+8Vg54nW5XeaEsaX2XMaoktMsZB9OMWjsmaxjXzM6DtgBq+juYZX9s1gHwbtyXnqBLp7YlOLZFckN2gQsfXo76xvgUOrTCzQDlq4gw+KqmiQvbH+vQP7lJPuaCTjiPuDh/6YQY0OHUKb/mFVnvPBCf0+nbQTQE5hDlgPO6JLyY8d94K5IR1QT0qwzsSWlwP+EsdEdpGgIYleQbLKcNH7Yw+iPZu12L8oRgwYGytKmrJRrGmylMNMqLIpvn71lgM3+HAukaiWHY1Ii3ViHxzu4YkmoELpTyjVF9g0IKCnJnJDJxL8QUJjuOWWmdOYCiNyUmgSwBDeCRJ3BkW582zQy3hKXvZXU18CYGMgjBurq8vLiEgbPgwXRDCRFS2RWYFNG6YBC8oQvZQku2XgEPrRP6RgUAAxlpMZsUD82dTip3VORACNXC2LbXAdCXN/btMD8XocjQFC9n7PjwEO0Dv70l52/Px24k1Buu42t0HDmD5mi7LXwJwiU3gUXB/lKsf0XqDeOlQDTIbUFahVp6neifb2j43OjS0PT9xrZklTPQctAm0MQQUq0mcXd9lKCZefPNnUKk0f5zeD+nj2wMDY0FjnxEjU9ufWQgp4QVvRUGg42O0pj4qDoiXj3TmG5Pm0GXEfBw/HWmDeWLDHcZr7E5xVOkCTygXsUYgXKEEWdTcNR+lklL3ab8F72vKn2Fpf5fJQiJTE0XBMQmYrQDqYmzcaGgXeHH6HE+JGJ4pIrDG/u3BaHU3Z1T+6+vYy+1urNG1Dpeqxw+3GQ5xfuQLrHf/c3yY8+f3lySJgkt1e0VAFMd/5KnL3+NZbXUHfmrLFXcszVsy/Gg5dhuPLNrR11PJGMMICAwJNrwQEfVJZiwwbU4p0EX1HUQSQKUUFXdL00bZJnzAIBBfk/h1trGL+hTfdXQovzqb5m9tnh/OzlOPGx8/uTX39ovVccWq9QhwVQppEXY9Bk/cJv/R8UTxIxkiOuM7CZxo4TqwYcWDNApmyiFOdyDXaQEo0dGMDIgkT8kPz85TOx1tmM4VKWC2adWKsHER+GCSITMRUt5AS7tC1UH6jlv6Zcpj7QAFVLjMelBEUBcphQCI6wgG7fWqxMJ1QxMAXwVdOvRT7NdVesrJoFdVrU+y6UO8jaNrNKiZnKAGDiF0a0jCBHW5N9x5mDTaEejDD2q0v616PntKLd21H9fz1X1u2zHXY6qOZ6KW8D00z/3Loyh/Cx2CbZ8wgyQAAAABJRU5ErkJggg==';
+
+        // 添加图标加载检查
+        function checkImageExists(url, callback) {
+          var img = new Image();
+          img.onload = function() { callback(true); };
+          img.onerror = function() { callback(false); };
+          img.src = url;
+        }
+
+        // 初始化地图
+        function initMap() {
+          // 检查图标是否可用
+          checkImageExists(markerIconDefault, function(exists) {
+            if (!exists) {
+              console.error("图标加载失败，尝试其他路径");
+              // 尝试其他可能的路径
+              markerIconDefault = '/static/marker.png';
+              markerIconBlue = '/static/marker.png';
+
+              // 如果仍然失败，使用Base64编码的图标
+              checkImageExists(markerIconDefault, function(exists) {
+                if (!exists) {
+                  console.error("备用路径也失败，使用Base64图标");
+                  markerIconDefault = markerIconDefaultBase64;
+                  markerIconBlue = markerIconBlueBase64;
+                }
+
+                // 现在初始化地图和标记
+                initMapWithCheckedIcons();
+              });
+            } else {
+              // 图标存在，初始化地图和标记
+              initMapWithCheckedIcons();
+            }
+          });
+        }
+
+        // 使用已检查的图标初始化地图
+        function initMapWithCheckedIcons() {
+          // 使用Number()转换确保经纬度是数字
+          initialPosition = new TMap.LatLng(Number("{{lat}}"), Number("{{lon}}"));
+
+            map = new TMap.Map('mapContainer', {
+                center: initialPosition,
+                zoom: 15,
+                showControl: true
+            });
+
+          // 创建当前位置标记
+            marker = new TMap.MultiMarker({
+                map: map,
+                styles: {
+                  "default": new TMap.MarkerStyle({
+                        width: 25,
+                        height: 35,
+                        anchor: { x: 12.5, y: 35 },
+                      src: markerIconDefault
+                    })
+                },
+                geometries: [{
+                    id: 'current',
+                    position: initialPosition,
+                  styleId: 'default'
+                }]
+            });
+
+            // 添加点击事件
+            map.on('click', handleMapClick);
+
+          // 添加标记点击事件
+          marker.on('click', function(evt) {
+              showInfoWindow(
+                  evt.geometry.position,
+                  "选定位置",
+                  "(" + evt.geometry.position.lat.toFixed(6) + ", " + evt.geometry.position.lng.toFixed(6) + ")"
+              );
+          });
+        }
+
+        // 处理地图点击
+        function handleMapClick(evt) {
+            var position = evt.latLng;
+
+            // 进行坐标逆解析，获取地点信息
+            getAddressByLocation(position, function(result) {
+                // 更新当前位置标记
+                marker.updateGeometries([{
+                    id: 'current',
+                    position: position,
+                    styleId: 'default'
+                }]);
+
+                // 使用搜索框文本或逆解析结果显示信息窗口
+                var keyword = document.getElementById('keyword').value;
+                if (keyword && keyword.trim() !== '') {
+                    showInfoWindow(position, keyword, result && result.address);
+                } else if (result && result.address) {
+                    showInfoWindow(position, result.formatted_addresses?.recommend || "选定位置", result.address);
+                } else {
+                    showInfoWindow(position, "选定位置", `(${position.lat.toFixed(6)}, ${position.lng.toFixed(6)})`);
+                }
+
+                // 隐藏搜索结果
+                document.getElementById('search-results').style.display = 'none';
+            });
+        }
+
+        // 根据坐标获取地址信息
+        function getAddressByLocation(location, callback) {
+            var callbackName = 'jsonp_reverseGeo_' + Math.round(100000 * Math.random());
+
+            window[callbackName] = function(res) {
+                // 移除script标签
+                var scriptTags = document.getElementsByTagName('script');
+                for (var i = 0; i < scriptTags.length; i++) {
+                    if (scriptTags[i].src.indexOf(callbackName) > -1) {
+                        document.body.removeChild(scriptTags[i]);
+                        break;
+                    }
+                }
+
+                if (res.status === 0 && res.result) {
+                    callback(res.result);
+                } else {
+                    callback(null);
+                }
+
+                // 清理回调函数
+                delete window[callbackName];
+            };
+
+            // 构建请求URL
+            var url = "https://apis.map.qq.com/ws/geocoder/v1/?location=" +
+                location.lat + "," + location.lng +
+                "&key=BDMBZ-LZQ63-GUG37-OCHES-2ESXV-Q5BVC&output=jsonp&callback=" + callbackName;
+
+            // 发送JSONP请求
+            var script = document.createElement('script');
+            script.src = url;
+            script.onerror = function() {
+                callback(null);
+                delete window[callbackName];
+            };
+            document.body.appendChild(script);
+        }
+
+        // 显示搜索结果
+        function displaySearchResults(places) {
+            if (!places || places.length === 0) return;
+
+            // 清除之前的搜索标记
+            clearSearchMarkers();
+
+            // 准备标记数据
+            var geometries = [];
+
+            // 创建结果标记
+            places.forEach(function(place, index) {
+                var position = new TMap.LatLng(place.location.lat, place.location.lng);
+
+                geometries.push({
+                    id: 'search_' + index,
+                    position: position,
+                    styleId: 'default',
+                    properties: {
+                        title: place.title,
+                        address: place.address
+                    }
+                });
+            });
+
+            // 创建标记图层 - 使用蓝色水滴图标
+            var resultMarker = new TMap.MultiMarker({
+                map: map,
+                styles: {
+                    "default": new TMap.MarkerStyle({
+                        width: 25,
+                        height: 35,
+                        anchor: { x: 12.5, y: 35 },
+                        src: markerIconBlue // 使用蓝色图标
+                    })
+                },
+                geometries: geometries
+            });
+
+            // 添加点击事件
+            resultMarker.on('click', function(evt) {
+                var position = evt.geometry.position;
+                var props = evt.geometry.properties;
+
+                // 使用正确的标题和地址信息
+                showInfoWindow(position, props.title, props.address);
+
+                // 更新当前标记
+            marker.updateGeometries([{
+                id: 'current',
+                position: position,
+                    styleId: 'default'
+                }]);
+
+                // 隐藏搜索结果
+                document.getElementById('search-results').style.display = 'none';
+            });
+
+            // 保存到标记数组用于后续清除
+            searchMarkers.push(resultMarker);
+
+            // 调整地图视野以包含所有标记
+            if (places.length === 1) {
+                // 单个结果直接定位
+                map.setCenter(geometries[0].position);
+                map.setZoom(16);
+
+                // 自动打开信息窗口
+                showInfoWindow(
+                    geometries[0].position,
+                    places[0].title,
+                    places[0].address
+                );
+            } else {
+                // 多个结果时调整视野包含所有标记
+                var bounds = new TMap.LatLngBounds();
+                geometries.forEach(function(geo) {
+                    bounds.extend(geo.position);
+                });
+                map.fitBounds(bounds);
+
+                // 显示提示
+                UIkit.notification({
+                    message: `找到 ${places.length} 个结果，请点击标记查看详情`,
+                    status: 'success',
+                    pos: 'top-center',
+                    timeout: 3000
+                });
+            }
+        }
+
+        // 显示信息窗口
+        function showInfoWindow(position, title, address) {
+            if (infoWindow) {
+                infoWindow.close();
+            }
+
+            // 获取真实的地点名称和地址
+            var placeName = title || document.getElementById('keyword').value || "选定位置";
+            var placeAddress = address || `(${position.lat.toFixed(6)}, ${position.lng.toFixed(6)})`;
+
+            console.log("显示信息窗口:", placeName, placeAddress);
+
+            // 创建信息窗口
+            infoWindow = new TMap.InfoWindow({
+                map: map,
+                position: position,
+                content: `
+                    <div class="uk-card uk-card-default uk-card-body" style="padding:15px; min-width:220px;">
+                        <h3 style="margin-top:0; margin-bottom:10px; font-size:16px; font-weight:bold;">${placeName}</h3>
+                        <p style="margin:0; color:#666; font-size:14px;">${placeAddress}</p>
+                        <div style="margin-top:15px; text-align:center;">
+                        <form name="navForm" method="post" onsubmit="return validateNavForm()">
+                            <input type="hidden" name="lat" value="${position.lat}">
+                            <input type="hidden" name="lon" value="${position.lng}">
+                            <input type="hidden" name="save_type" value="${document.getElementById('save_type').value}">
+                            <input type="hidden" id="place_name_field" name="place_name" value="${placeName}">
+                            <input class="uk-button uk-button-primary" type="submit" value="导航" style="width:100px;">
+                        </form>
+                        </div>
+                    </div>
+                `,
+                offset: { x: 0, y: -35 }
+            });
+
+            // 打开信息窗口
+            infoWindow.open();
+        }
+
+        // 验证导航表单确保地名被传递
+        function validateNavForm() {
+            var placeNameField = document.getElementById('place_name_field');
+
+            // 如果地名为空，尝试从搜索框获取
+            if (!placeNameField.value || placeNameField.value === "选定位置") {
+                var keyword = document.getElementById('keyword').value;
+                if (keyword && keyword.trim() !== '') {
+                    placeNameField.value = keyword;
+                    console.log("从搜索框获取地名:", keyword);
+                }
+            }
+
+            // 调试输出
+            console.log("提交导航表单，地名:", placeNameField.value);
+            return true;
+        }
+
+        // 搜索地点
+        function searchPlace(keyword) {
+            if (!keyword || keyword.trim() === '') {
+                UIkit.notification({
+                    message: '请输入搜索关键词',
+                    status: 'warning',
+                    pos: 'top-center',
+                    timeout: 3000
+                });
+                return;
+            }
+
+            // 显示加载提示
+            console.log("开始搜索：", keyword);
+            UIkit.notification({
+                message: '正在搜索...',
+                status: 'primary',
+                pos: 'top-center',
+                timeout: 2000
+            });
+
+            // 清除之前的标记
+            clearSearchMarkers();
+
+            // 创建JSONP回调
+            var callbackName = 'jsonp_search_' + Math.round(100000 * Math.random());
+
+            // 定义回调函数
+            window[callbackName] = function(res) {
+                console.log("搜索结果：", res);
+
+                // 移除script标签
+                var scriptTags = document.getElementsByTagName('script');
+                for (var i = 0; i < scriptTags.length; i++) {
+                    if (scriptTags[i].src.indexOf(callbackName) > -1) {
+                        document.body.removeChild(scriptTags[i]);
+                        break;
+                    }
+                }
+
+                // 处理搜索结果
+                if (res.status === 0 && res.data && res.data.length > 0) {
+                    // 显示搜索结果
+                    displaySearchResults(res.data);
+                } else {
+                    UIkit.notification({
+                        message: '未找到相关结果',
+                        status: 'warning',
+                        pos: 'top-center',
+                        timeout: 3000
+                    });
+                }
+
+                // 清理回调函数
+                delete window[callbackName];
+            };
+
+            // 构建搜索请求URL
+            var searchUrl = "https://apis.map.qq.com/ws/place/v1/search?keyword=" +
+                encodeURIComponent(keyword) +
+                "&boundary=region(全国,0)" +
+                "&page_size=10" +
+                "&page_index=1" +
+                "&key=BDMBZ-LZQ63-GUG37-OCHES-2ESXV-Q5BVC&output=jsonp&callback=" + callbackName;
+
+            // 发送JSONP请求
+            var script = document.createElement('script');
+            script.src = searchUrl;
+            script.onerror = function() {
+                UIkit.notification({
+                    message: '搜索请求失败，请检查网络连接',
+                    status: 'danger',
+                    pos: 'top-center',
+                    timeout: 3000
+                });
+                delete window[callbackName];
+            };
+            document.body.appendChild(script);
+        }
+
+        // 清除搜索标记
+        function clearSearchMarkers() {
+            searchMarkers.forEach(function(marker) {
+                marker.setMap(null);
+            });
+            searchMarkers = [];
+        }
+
+        // 初始化地图
+        initMap();
+      </script>
+{% endblock %}

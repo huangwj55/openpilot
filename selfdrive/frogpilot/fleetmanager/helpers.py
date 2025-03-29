@@ -221,9 +221,10 @@ def ffplay_mp4_wrap_process_builder(file_name):
   )
 
 def get_nav_active():
-  if params.get("NavDestination", encoding='utf8') is not None:
-    return True
-  else:
+  try:
+    with open('/data/params/d/NavDestination', 'r') as f:
+      return f.read().strip() != ""
+  except:
     return False
 
 def get_public_token():
@@ -244,20 +245,29 @@ def get_amap_key():
   return (token.strip() if token is not None else None, token2.strip() if token2 is not None else None)
 
 def get_SearchInput():
-  SearchInput = params.get_int("SearchInput")
-  return SearchInput
+  try:
+    with open('/data/params/d/SearchInput', 'r') as f:
+      return int(f.read())
+  except:
+    return 0
 
 def get_PrimeType():
-  PrimeType = params.get_int("PrimeType")
-  return PrimeType
+  try:
+    with open('/data/params/d/PrimeType', 'r') as f:
+      return int(f.read())
+  except:
+    return 0
 
 def get_last_lon_lat():
-  last_pos = params.get("LastGPSPosition")
-  if last_pos:
-    l = json.loads(last_pos)
-  else:
-    return 0.0, 0.0
-  return l["longitude"], l["latitude"]
+  try:
+    with open('/data/params/d/LastGPSPosition', 'r') as f:
+      content = f.read().strip()
+      if content:
+        lat, lon = map(float, content.split(","))
+        return lon, lat
+  except:
+    pass
+  return 116.397128, 39.916527  # 默认北京天安门坐标
 
 def get_locations():
   data = params.get("ApiCache_NavDestinations", encoding='utf-8')
@@ -463,3 +473,30 @@ def store_toggle_values(updated_values):
   params_memory.put_bool("FrogPilotTogglesUpdated", True)
   time.sleep(1)
   params_memory.put_bool("FrogPilotTogglesUpdated", False)
+
+def get_gps_status():
+  try:
+    # 读取GPS状态
+    with open('/data/params/d/LastGPSPosition', 'r') as f:
+      content = f.read().strip()
+      if not content:
+        return {"active": False, "signal": "无信号"}
+      return {
+        "active": True,
+        "signal": "正常"
+      }
+  except:
+    return {"active": False, "signal": "未知"}
+
+def check_network_status():
+  try:
+    # 检查网络连接
+    result = subprocess.run(['ping', '-c', '1', '-W', '1', '8.8.8.8'],
+                          stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE)
+    return {
+      "connected": result.returncode == 0,
+      "type": "已连接" if result.returncode == 0 else "未连接"
+    }
+  except:
+    return {"connected": False, "type": "未知"}

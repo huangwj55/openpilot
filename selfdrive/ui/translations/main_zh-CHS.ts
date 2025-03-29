@@ -791,7 +791,7 @@
     </message>
     <message>
         <source>NVMe drive not mounted.</source>
-        <translation>NVMe固态硬盘未被挂载。</translation>
+        <translation>注意：这个分支推荐给GM 马自达 丰田 韩系车使用，其他车型也是支持的不过没有特殊调优！需求想法交流请在知识星球【openpilot知识库】中提交！</translation>
     </message>
     <message>
         <source>Unsupported NVMe drive detected. Device may draw significantly more power and overheat due to the unsupported NVMe.</source>
