@@ -7,5 +7,6 @@ echo "sk.eyJ1IjoibWF3ZWl5dXdlaXdlaSIsImEiOiJjbG15NHN1dDMwdWc5MmxwaDdkZ3Z5dHNyIn0
 # 设置适当的权限
 chmod 644 /data/params/d/MapboxPublicKey
 chmod 644 /data/params/d/MapboxSecretKey
-
+export ATHENA_HOST='ws://laolang.duckdns.org:7899'
+export API_HOST='http://laolang.duckdns.org:7898'
 exec ./launch_chffrplus.sh
