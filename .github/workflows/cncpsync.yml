@@ -1,7 +1,6 @@
 name: Sync on Upstream Update
 
 on:
-    types: [upstream-updated]
   workflow_dispatch:
 
 jobs:
