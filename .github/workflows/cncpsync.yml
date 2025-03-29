@@ -1,7 +1,6 @@
 name: Sync on Upstream Update
 
 on:
-  repository_dispatch:
     types: [upstream-updated]
   workflow_dispatch:
 
@@ -24,25 +23,34 @@ jobs:
         run: |
           git remote add upstream https://github.com/jixiexiaoge/openpilot.git
 
-      - name: Fetch Upstream Changes
+      - name: Reset to Upstream
         run: |
           git fetch upstream cncp
+          git reset --hard upstream/cncp
 
-      - name: Merge Upstream Changes
+      - name: Modify values.py with sed
         run: |
-          git merge --allow-unrelated-histories upstream/cncp
+          # Code to add
+          CODE_TO_ADD="
+          if __name__ == \"__main__\":
+            cars = []
+            for platform in CAR:
+              for doc in platform.config.car_docs:
+                cars.append(doc.name)
+            cars.sort()
+            for c in cars:
+              print(c)
+          "
 
-      - name: Set up Python
-        uses: actions/setup-python@v3
-        with:
-          python-version: '3.x'
-
-      - name: Modify values.py with Python
-        run: |
-          python modify_values.py
+          # 使用 sed 命令将代码添加到 values.py 文件的末尾，如果代码不存在
+          if ! grep -q "$CODE_TO_ADD" openpilot/opendbc_repo/opendbc/car/toyota/values.py; then
+            echo "$CODE_TO_ADD" >> openpilot/opendbc_repo/opendbc/car/toyota/values.py
+          else
+            echo "Code already exists in values.py, skipping modification."
+          fi
 
       - name: Commit and Push Changes
         run: |
-          git add openpilot/opendbc_repo/opendbc/car/toyota/values.py
-          git commit -m "Sync with jixiexiaoge/openpilot cncp and modify values.py"
-          git push origin cncp
+          git add opendbc_repo/opendbc/car/toyota/values.py
+          git commit -m "Sync with jixiexiaoge/openpilot cncp (reset to upstream) and modify values.py"
+          git push origin cncp -f
