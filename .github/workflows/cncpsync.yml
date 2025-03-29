@@ -1,9 +1,9 @@
-name: Sync and Modify Openpilot Values.py
+name: Sync on Upstream Update
 
 on:
-  schedule:
-    - cron: '0 0 * * *'  # 每天零点运行一次，你可以根据需要修改
-  workflow_dispatch:  # 允许手动触发 workflow
+  repository_dispatch:
+    types: [upstream-updated]
+  workflow_dispatch:
 
 jobs:
   sync_and_modify:
@@ -13,7 +13,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
         with:
-          ref: cncp  # 检出你的 cncp 分支
+          ref: cncp
 
       - name: Configure Git
         run: |
@@ -30,19 +30,16 @@ jobs:
 
       - name: Merge Upstream Changes
         run: |
-          git merge upstream/cncp
+          git merge --allow-unrelated-histories upstream/cncp
 
-      - name: Modify values.py
+      - name: Set up Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: '3.x'
+
+      - name: Modify values.py with Python
         run: |
-          echo "" >> openpilot/opendbc_repo/opendbc/car/toyota/values.py
-          echo "if __name__ == \"__main__\":" >> openpilot/opendbc_repo/opendbc/car/toyota/values.py
-          echo "  cars = []" >> openpilot/opendbc_repo/opendbc/car/toyota/values.py
-          echo "  for platform in CAR:" >> openpilot/opendbc_repo/opendbc/car/toyota/values.py
-          echo "    for doc in platform.config.car_docs:" >> openpilot/opendbc_repo/opendbc/car/toyota/values.py
-          echo "      cars.append(doc.name)" >> openpilot/opendbc_repo/opendbc/car/toyota/values.py
-          echo "  cars.sort()" >> openpilot/opendbc_repo/opendbc/car/toyota/values.py
-          echo "  for c in cars:" >> openpilot/opendbc_repo/opendbc/car/toyota/values.py
-          echo "    print(c)" >> openpilot/opendbc_repo/opendbc/car/toyota/values.py
+          python modify_values.py
 
       - name: Commit and Push Changes
         run: |
