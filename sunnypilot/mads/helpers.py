@@ -14,12 +14,16 @@ from opendbc.sunnypilot.car.hyundai.values import HyundaiFlagsSP, HyundaiSafetyF
 def set_alternative_experience(CP: structs.CarParams, params: Params):
   enabled = params.get_bool("Mads")
   pause_lateral_on_brake = params.get_bool("MadsPauseLateralOnBrake")
+  sp_toyota_auto_brake_hold = params.get_bool("ToyotaAutoHold")
 
   if enabled:
     CP.alternativeExperience |= ALTERNATIVE_EXPERIENCE.ENABLE_MADS
 
     if pause_lateral_on_brake:
       CP.alternativeExperience |= ALTERNATIVE_EXPERIENCE.DISENGAGE_LATERAL_ON_BRAKE
+
+  if sp_toyota_auto_brake_hold:
+    CP.alternativeExperience |= ALTERNATIVE_EXPERIENCE.ALLOW_AEB
 
 
 def set_car_specific_params(CP: structs.CarParams, CP_SP: structs.CarParamsSP, params: Params):
