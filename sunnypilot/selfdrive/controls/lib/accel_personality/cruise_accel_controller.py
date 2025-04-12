@@ -52,30 +52,30 @@ class CruiseAccelController:
     self._read_params()
 
     # Debug print to show current personality and speed
-    print(f"Personality: {self._personality}")
-    print(f"Vehicle speed (v_ego): {v_ego}")
+    #print(f"Personality: {self._personality}")
+    #print(f"Vehicle speed (v_ego): {v_ego}")
 
     # Select appropriate min acceleration values based on personality
     if self._personality == AccelPersonality.eco:
       min_accel_vals = self.min_accel_vals_eco
-      print("Using eco personality")
+      #print("Using eco personality")
     elif self._personality == AccelPersonality.sport:
       min_accel_vals = self.min_accel_vals_sport
-      print("Using sport personality")
+      #print("Using sport personality")
     elif self._personality == AccelPersonality.normal:
       min_accel_vals = self.min_accel_vals_normal  # Now using normal personality values
-      print("Using normal personality")
+      #print("Using normal personality")
     else:
       min_accel_vals = self.min_accel_vals_stock
-      print("Using stock personality")
+      #print("Using stock personality")
 
     # Debug print to show selected min_accel_vals for the current personality
-    print(f"Selected min_accel_vals: {min_accel_vals}")
+    #print(f"Selected min_accel_vals: {min_accel_vals}")
 
     # Calculate the minimum acceleration by interpolation
     min_accel = interp(v_ego, self.speed_breakpoints, min_accel_vals)
 
     # Debug print to show the result of interpolation
-    print(f"Interpolated minimum acceleration: {min_accel}")
+    #print(f"Interpolated minimum acceleration: {min_accel}")
 
     return min_accel
