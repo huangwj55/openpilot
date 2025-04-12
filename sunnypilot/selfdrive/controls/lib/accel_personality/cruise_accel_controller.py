@@ -18,7 +18,7 @@ class CruiseAccelController:
 
   def __init__(self):
     # Speed breakpoints (m/s)
-    self.speed_breakpoints =     [0.,     .3,     1.,    27,   40]
+    self.speed_breakpoints =     [0.,     .3,     1.,    27.,   40.]
 
     # Minimum allowed accelerations (m/s²) corresponding to each speed breakpoint for different personalities
     self.min_accel_vals_stock =  [-0.0066, -0.03, -0.07, -0.6, -0.8]
