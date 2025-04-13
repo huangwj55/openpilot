@@ -76,25 +76,29 @@ jobs:
           fi
       # --- 结束新增步骤 ---
 
-      # 步骤 3: 使用 pip 安装 Python 依赖 (来自 requirements.txt)
-      # 即使 ubuntu_setup.sh 可能安装了一些包，这一步确保 requirements.txt 中的所有内容都满足
-      - name: Install Python Dependencies (Pip)
+        # 步骤 3: 使用 pip 安装 Python 依赖 (来自 pyproject.toml)
+      - name: Install Python Dependencies (Pip from pyproject.toml)
         run: |
-          echo "Installing Python dependencies via pip from requirements.txt..."
+          echo "Installing Python dependencies via pip from pyproject.toml..."
+          # 升级 pip, wheel, setuptools 很重要，确保能良好处理 pyproject.toml
           python -m pip install --upgrade pip wheel setuptools
-          # --- 检查并确认 requirements.txt 的路径 ---
-          REQUIREMENTS_FILE="requirements.txt"
-          if [ -f "$REQUIREMENTS_FILE" ]; then
-            echo "Installing from $REQUIREMENTS_FILE..."
-            pip install -r $REQUIREMENTS_FILE
-          elif [ -f "selfdrive/$REQUIREMENTS_FILE" ]; then
-            echo "Installing from selfdrive/$REQUIREMENTS_FILE..."
-            pip install -r "selfdrive/$REQUIREMENTS_FILE"
+
+          # --- 检查 pyproject.toml 是否存在 ---
+          if [ -f "pyproject.toml" ]; then
+            echo "Found pyproject.toml. Installing dependencies defined within..."
+            # 使用 '.' 指示 pip 从当前目录安装项目及其依赖
+            # pip 会自动查找 pyproject.toml 并根据其内容安装
+            # 如果你的 pyproject.toml 定义了可选依赖 (extras) 且构建需要它们,
+            # 可能需要类似 pip install .[dev] 或 .[test] 的命令
+            # 但通常 pip install . 会安装核心运行时依赖
+            pip install .
           else
-            echo "Error: requirements.txt not found in root or selfdrive/ directory!"
+            # 如果连 pyproject.toml 都没有，依赖安装将失败
+            echo "Error: pyproject.toml not found in the repository root!"
             exit 1
           fi
-          echo "Python dependencies installed/verified from requirements.txt."
+          echo "Python dependencies installed based on pyproject.toml."
+
 
       # 步骤 4: 拉取 Git LFS 文件
       - name: Pull Git LFS files
