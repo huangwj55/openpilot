@@ -37,7 +37,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10' # 确认版本
+          python-version: '3.11' # 确认版本
           cache: 'pip' # 启用 pip 缓存加速后续构建
 
        # 步骤 1: 安装核心系统依赖 (APT)
