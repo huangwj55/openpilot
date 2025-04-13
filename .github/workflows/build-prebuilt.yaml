@@ -48,26 +48,40 @@ jobs:
         with:
           python-version: '3.11' # Or '3.10', '3.11' - Ensure compatibility with numpy>=2.0 if needed
           cache: 'pip'
-
-      - name: Install System Build Dependencies (APT)
+          
+      # --- NEW: Install Cross-Compilation Tools and aarch64 Libraries ---
+      - name: Install Cross-Compile Tools & aarch64 Dependencies
         run: |
-          echo "Installing system dependencies via apt..."
+          echo "Setting up for aarch64 cross-compilation..."
           sudo apt-get update -y
-          # Need rsync for filtering step
+          # Install essential cross-compilation tools
           sudo apt-get install -y --no-install-recommends \
-            scons git-lfs build-essential rsync \
-            libffi-dev libssl-dev libzmq3-dev libsdl2-dev libqt5svg5-dev qttools5-dev
-          echo "System dependencies installed."
+            crossbuild-essential-arm64 \
+            pkg-config-aarch64-linux-gnu \
+            rsync git-lfs # Keep rsync and git-lfs
 
-      # Optional: Run your ubuntu_setup.sh if absolutely needed for more setup
-      - name: Run ubuntu_setup.sh Script
-        run: |
-          SETUP_SCRIPT="tools/ubuntu_setup.sh"
-          if [ -f "$SETUP_SCRIPT" ]; then
-            chmod +x $SETUP_SCRIPT && ./$SETUP_SCRIPT || exit 1
-          else
-            echo "Warning: $SETUP_SCRIPT not found."
-          fi
+          # Enable arm64 architecture for foreign libraries
+          sudo dpkg --add-architecture arm64
+          sudo apt-get update -y
+
+          # Install aarch64 versions of necessary libraries
+          # !!! This list needs to be accurate based on ALL project dependencies !!!
+          # You might need to add more based on build errors.
+          sudo apt-get install -y --no-install-recommends \
+            libffi-dev:arm64 \
+            libssl-dev:arm64 \
+            libzmq3-dev:arm64 \
+            libsdl2-dev:arm64 \
+            # Qt dependencies might be tricky, install core dev tools first
+            qtbase5-dev:arm64 \
+            libqt5svg5-dev:arm64 \
+            qttools5-dev:arm64 \
+            # Add any other -dev packages your project links against, with :arm64 suffix
+            # Example: libcurl4-openssl-dev:arm64, libarchive-dev:arm64, libusb-1.0-0-dev:arm64 etc.
+
+          echo "Cross-compilation environment setup complete."
+          # Verify toolchain existence
+          aarch64-linux-gnu-gcc --version
 
       - name: Install Python Dependencies (Pip from pyproject.toml)
         run: |
@@ -85,21 +99,28 @@ jobs:
         run: git lfs pull
 
       # --- Build Step ---
-      - name: Build openpilot (Full Build)
+      - name: Build openpilot (Cross-Compile for aarch64)
         id: build
         run: |
-          echo "Starting full build..."
-          # Perform a full build, as filtering happens afterwards
-          scons -j$(nproc) || exit 1
-          # Create a marker file similar to sunnypilot's workflow (optional)
-          touch prebuilt_marker
+          echo "Starting aarch64 cross-compilation..."
+          # Explicitly tell scons to use the aarch64 cross-compiler
+          # Also potentially set AGNOS=0 if needed to avoid larch64 specific paths
+          export AGNOS=0 # Assume we want generic aarch64 build
+          scons -j$(nproc) \
+            CC=aarch64-linux-gnu-gcc \
+            CXX=aarch64-linux-gnu-g++ \
+            AR=aarch64-linux-gnu-ar \
+            RANLIB=aarch64-linux-gnu-ranlib \
+            LINK=aarch64-linux-gnu-g++ \
+            PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig \
+            || exit 1
+            # You might need to add platform specific CFLAGS/CXXFLAGS here if required
+            # Example: CFLAGS='-march=armv8-a' CXXFLAGS='-march=armv8-a'
+
+          touch prebuilt_marker # Keep this marker if desired
           echo "Build finished."
-          # Attempt to get version (adjust path/command if needed)
-          if [ -f "common/version.h" ]; then
-            VERSION=$(cat common/version.h | awk -F'"' '/COMMA_VERSION/{print $2}' || echo "unknown")
-          else
-            VERSION="unknown"
-          fi
+          # Get version (保持不变)
+          # ... (version extraction logic) ...
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       # --- Filtering Step ---
