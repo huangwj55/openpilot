@@ -1,26 +1,24 @@
 name: Build and Create tn-prebuilt Branch
 
 on:
-  # 允许手动触发
   workflow_dispatch:
     inputs:
       ref_to_build:
         description: 'The branch or commit SHA to build (default: tn)'
         required: true
-        default: 'tn' # 默认构建 tn 分支
-  # 仍然在推送到 tn 分支时自动触发
+        default: 'tn'
   push:
     branches:
       - tn
 
 jobs:
   build_and_push_prebuilt:
-    runs-on: ubuntu-latest # 使用最新的 Ubuntu Runner
+    runs-on: ubuntu-latest
     steps:
       - name: Determine Ref to Checkout
         id: vars
         run: |
-          # 如果是手动触发，使用输入的 ref；如果是 push 触发，使用触发的 ref
+          # ... (保持不变) ...
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             echo "ref=${{ github.event.inputs.ref_to_build }}" >> $GITHUB_OUTPUT
             echo "source_desc=ref '${{ github.event.inputs.ref_to_build }}'" >> $GITHUB_OUTPUT
@@ -32,40 +30,93 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ steps.vars.outputs.ref }} # 使用上一步确定的 ref
-          # fetch-depth: 0 # 如果构建过程需要完整的 git 历史记录，可以取消注释
+          ref: ${{ steps.vars.outputs.ref }}
+          submodules: true
+          lfs: false # 手动 pull lfs
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.8' # 根据 openpilot/sunnypilot 的要求指定 Python 版本
+          python-version: '3.8' # 确认版本
+          cache: 'pip' # 启用 pip 缓存加速后续构建
 
-      - name: Install Build Dependencies and Numpy
+       # 步骤 1: 安装核心系统依赖 (APT)
+      - name: Install Core System Dependencies (APT)
         run: |
-          echo "Installing base dependencies..."
+          echo "Installing core system dependencies via apt..."
           sudo apt-get update -y
-          sudo apt-get install -y scons # 确保 scons 已安装
-          echo "SCons installed explicitly."
+          # 基本构建工具、SCons、Git LFS 和一些常见库
+          # 确保即使脚本失败，这些核心工具也存在
+          sudo apt-get install -y --no-install-recommends \
+            scons \
+            git-lfs \
+            build-essential \
+            libffi-dev \
+            libssl-dev \
+            libzmq3-dev \
+            libsdl2-dev \
+            libqt5svg5-dev \
+            qttools5-dev
+          echo "Core system dependencies installed."
 
-          # 尝试运行仓库自带的脚本处理其他依赖
-          if [ -f "tools/ubuntu_setup.sh" ]; then
-            echo "Running tools/ubuntu_setup.sh..."
-            chmod +x tools/ubuntu_setup.sh
-            # 假设此脚本会安装其他 apt 和 pip 依赖
-            # 如果它失败了，后续可能还会出错
-            ./tools/ubuntu_setup.sh || echo "Warning: tools/ubuntu_setup.sh execution failed."
+      # --- 新增步骤: 运行仓库自带的设置脚本 ---
+      - name: Run ubuntu_setup.sh Script
+        run: |
+          SETUP_SCRIPT="tools/ubuntu_setup.sh"
+          if [ -f "$SETUP_SCRIPT" ]; then
+            echo "Running $SETUP_SCRIPT..."
+            chmod +x $SETUP_SCRIPT
+            # 执行脚本，如果失败则终止 workflow (因为用户确认它是有效的)
+            ./$SETUP_SCRIPT || exit 1
+            echo "$SETUP_SCRIPT executed successfully."
           else
-            echo "Dependency setup script not found at tools/ubuntu_setup.sh! Only scons and numpy installed."
-            # 如果脚本不存在，你可能需要在这里安装更多系统依赖
-            # sudo apt-get install -y git-lfs libzmq3-dev ...
+            # 如果脚本不存在，根据你的确认，这可能是一个问题
+            echo "Error: Dependency setup script $SETUP_SCRIPT not found!"
+            exit 1 # 强制失败，因为脚本被认为是必要的
           fi
+      # --- 结束新增步骤 ---
 
-          # 在运行脚本之后（或脚本不存在时）确保 numpy 已安装
-          echo "Ensuring numpy is installed..."
-          # 使用标准的 pip
-          python -m pip install numpy # 或者 pip install numpy
-          echo "Numpy installation step finished."
+      # 步骤 3: 使用 pip 安装 Python 依赖 (来自 requirements.txt)
+      # 即使 ubuntu_setup.sh 可能安装了一些包，这一步确保 requirements.txt 中的所有内容都满足
+      - name: Install Python Dependencies (Pip)
+        run: |
+          echo "Installing Python dependencies via pip from requirements.txt..."
+          python -m pip install --upgrade pip wheel setuptools
+          # --- 检查并确认 requirements.txt 的路径 ---
+          REQUIREMENTS_FILE="requirements.txt"
+          if [ -f "$REQUIREMENTS_FILE" ]; then
+            echo "Installing from $REQUIREMENTS_FILE..."
+            pip install -r $REQUIREMENTS_FILE
+          elif [ -f "selfdrive/$REQUIREMENTS_FILE" ]; then
+            echo "Installing from selfdrive/$REQUIREMENTS_FILE..."
+            pip install -r "selfdrive/$REQUIREMENTS_FILE"
+          else
+            echo "Error: requirements.txt not found in root or selfdrive/ directory!"
+            exit 1
+          fi
+          echo "Python dependencies installed/verified from requirements.txt."
 
+      # 步骤 4: 拉取 Git LFS 文件
+      - name: Pull Git LFS files
+        run: |
+          git lfs pull
+          echo "Git LFS files pulled."
+
+      # 步骤 5: (可选) 检查环境用于调试
+      - name: Check Environment before SCons
+        run: |
+          echo "Which Python:"
+          which python
+          echo "Python Version:"
+          python --version
+          echo "Which scons:"
+          which scons
+          echo "Installed packages (pip list):"
+          pip list | grep numpy # 检查 numpy 是否在列表里
+          echo "Attempting to import numpy:"
+          python -c "import numpy; print('Successfully imported numpy version:', numpy.__version__)" || exit 1
+
+      # 步骤 6: 构建 openpilot (scons)
       - name: Build openpilot (scons)
         run: |
           echo "Starting build..."
