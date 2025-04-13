@@ -1,0 +1,99 @@
+name: Build and Create tn-prebuilt Branch
+
+on:
+  # 允许手动触发
+  workflow_dispatch:
+    inputs:
+      ref_to_build:
+        description: 'The branch or commit SHA to build (default: tn)'
+        required: true
+        default: 'tn' # 默认构建 tn 分支
+  # 仍然在推送到 tn 分支时自动触发
+  push:
+    branches:
+      - tn
+
+jobs:
+  build_and_push_prebuilt:
+    runs-on: ubuntu-latest # 使用最新的 Ubuntu Runner
+    steps:
+      - name: Determine Ref to Checkout
+        id: vars
+        run: |
+          # 如果是手动触发，使用输入的 ref；如果是 push 触发，使用触发的 ref
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "ref=${{ github.event.inputs.ref_to_build }}" >> $GITHUB_OUTPUT
+            echo "source_desc=ref '${{ github.event.inputs.ref_to_build }}'" >> $GITHUB_OUTPUT
+          else
+            echo "ref=${{ github.ref }}" >> $GITHUB_OUTPUT
+            echo "source_desc=branch '${{ github.ref_name }}'" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.vars.outputs.ref }} # 使用上一步确定的 ref
+          # fetch-depth: 0 # 如果构建过程需要完整的 git 历史记录，可以取消注释
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.8' # 根据 openpilot/sunnypilot 的要求指定 Python 版本
+
+      - name: Install Build Dependencies
+        run: |
+          echo "Installing dependencies..."
+          sudo apt-get update -y
+          # !!! 请根据你的仓库实际情况修改此脚本路径 !!!
+          if [ -f "tools/ubuntu_setup.sh" ]; then
+            ./tools/ubuntu_setup.sh || exit 1
+          else
+            echo "Dependency setup script not found at tools/ubuntu_setup.sh!"
+            # 在这里可以添加备用的依赖安装命令
+            exit 1
+          fi
+          echo "Dependencies installed."
+
+      - name: Build openpilot (scons)
+        run: |
+          echo "Starting build..."
+          scons -j$(nproc)
+          echo "Build finished."
+
+      # --- 以下步骤用于创建和推送 prebuilt 分支 ---
+
+      - name: Configure Git User
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
+      - name: Create or Checkout tn-prebuilt branch
+        run: |
+          # 切换到一个新的或已存在的 tn-prebuilt 分支
+          git checkout -B tn-prebuilt
+          echo "Switched to tn-prebuilt branch."
+
+      - name: Add all files (including build artifacts)
+        run: |
+          # 注意 .gitignore 规则，可能需要强制添加 (-f) 被忽略的构建产物
+          git add -A .
+          echo "Added all files to staging area."
+
+      - name: Commit changes
+        run: |
+          # 检查是否有文件变动需要提交
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            # 获取实际检出代码的 commit SHA
+            CHECKED_OUT_SHA=$(git rev-parse HEAD)
+            # 创建提交，包含源引用信息和 SHA
+            git commit -m "Prebuilt artifacts for ${{ steps.vars.outputs.source_desc }} (commit ${CHECKED_OUT_SHA})"
+            echo "Committed changes."
+          fi
+
+      - name: Push tn-prebuilt branch
+        run: |
+          echo "Pushing tn-prebuilt branch..."
+          git push origin tn-prebuilt --force
+          echo "tn-prebuilt branch pushed successfully."
