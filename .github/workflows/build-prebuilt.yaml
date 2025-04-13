@@ -40,30 +40,31 @@ jobs:
         with:
           python-version: '3.8' # 根据 openpilot/sunnypilot 的要求指定 Python 版本
 
-      - name: Install Build Dependencies
+      - name: Install Build Dependencies and Numpy
         run: |
-          echo "Installing dependencies..."
+          echo "Installing base dependencies..."
           sudo apt-get update -y
-          # --- 添加下面这行来显式安装 scons ---
-          sudo apt-get install -y scons
-          # -------------------------------------
-          echo "SCons installed explicitly." # 添加日志确认
+          sudo apt-get install -y scons # 确保 scons 已安装
+          echo "SCons installed explicitly."
 
-          # 尝试运行仓库自带的脚本（如果存在）
-          # !!! 仍然需要确认这个脚本路径是否适合你的 tn 分支 !!!
+          # 尝试运行仓库自带的脚本处理其他依赖
           if [ -f "tools/ubuntu_setup.sh" ]; then
             echo "Running tools/ubuntu_setup.sh..."
-            # 确保脚本有执行权限
             chmod +x tools/ubuntu_setup.sh
-            # 执行脚本，如果失败则输出警告但继续 (或者使用 `|| exit 1` 使其失败时终止 workflow)
+            # 假设此脚本会安装其他 apt 和 pip 依赖
+            # 如果它失败了，后续可能还会出错
             ./tools/ubuntu_setup.sh || echo "Warning: tools/ubuntu_setup.sh execution failed."
           else
-            echo "Dependency setup script not found at tools/ubuntu_setup.sh!"
-            # 如果脚本不存在，你可能需要在这里添加更多必须的依赖安装命令
-            # 例如：sudo apt-get install -y git-lfs libzmq3-dev ... etc.
+            echo "Dependency setup script not found at tools/ubuntu_setup.sh! Only scons and numpy installed."
+            # 如果脚本不存在，你可能需要在这里安装更多系统依赖
+            # sudo apt-get install -y git-lfs libzmq3-dev ...
           fi
-          uv pip install numpy
-          echo "Dependency installation step finished."
+
+          # 在运行脚本之后（或脚本不存在时）确保 numpy 已安装
+          echo "Ensuring numpy is installed..."
+          # 使用标准的 pip
+          python -m pip install numpy # 或者 pip install numpy
+          echo "Numpy installation step finished."
 
       - name: Build openpilot (scons)
         run: |
