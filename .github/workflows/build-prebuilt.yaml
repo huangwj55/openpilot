@@ -1,4 +1,4 @@
-name: Build and Create tn-prebuilt Branch
+name: Build Filtered tn-prebuilt Branch
 
 on:
   workflow_dispatch:
@@ -12,155 +12,202 @@ on:
       - tn
 
 jobs:
-  build_and_push_prebuilt:
-    runs-on: ubuntu-latest
+  build_and_publish_filtered_prebuilt:
+    runs-on: ubuntu-latest # Use standard GitHub Runner
+    permissions:
+      contents: write # Needed to push the branch
+
     steps:
+      # --- Standard Setup Steps ---
       - name: Determine Ref to Checkout
         id: vars
         run: |
-          # ... (保持不变) ...
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             echo "ref=${{ github.event.inputs.ref_to_build }}" >> $GITHUB_OUTPUT
             echo "source_desc=ref '${{ github.event.inputs.ref_to_build }}'" >> $GITHUB_OUTPUT
+            SOURCE_SHA=$(git ls-remote https://github.com/${{ github.repository }}.git ${{ github.event.inputs.ref_to_build }} | awk '{ print $1 }')
           else
             echo "ref=${{ github.ref }}" >> $GITHUB_OUTPUT
             echo "source_desc=branch '${{ github.ref_name }}'" >> $GITHUB_OUTPUT
+            SOURCE_SHA=${{ github.sha }}
           fi
+          # Store source SHA for commit message later
+          echo "source_sha=$SOURCE_SHA" >> $GITHUB_OUTPUT
+          echo "Checkout ref: ${{ steps.vars.outputs.ref }}"
+          echo "Source SHA: ${{ steps.vars.outputs.source_sha }}"
 
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           ref: ${{ steps.vars.outputs.ref }}
           submodules: true
-          lfs: false # 手动 pull lfs
+          lfs: false # Pull LFS manually later
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11' # 确认版本
-          cache: 'pip' # 启用 pip 缓存加速后续构建
+          python-version: '3.11' # Or '3.10', '3.11' - Ensure compatibility with numpy>=2.0 if needed
+          cache: 'pip'
 
-       # 步骤 1: 安装核心系统依赖 (APT)
-      - name: Install Core System Dependencies (APT)
+      - name: Install System Build Dependencies (APT)
         run: |
-          echo "Installing core system dependencies via apt..."
+          echo "Installing system dependencies via apt..."
           sudo apt-get update -y
-          # 基本构建工具、SCons、Git LFS 和一些常见库
-          # 确保即使脚本失败，这些核心工具也存在
+          # Need rsync for filtering step
           sudo apt-get install -y --no-install-recommends \
-            scons \
-            git-lfs \
-            build-essential \
-            libffi-dev \
-            libssl-dev \
-            libzmq3-dev \
-            libsdl2-dev \
-            libqt5svg5-dev \
-            qttools5-dev
-          echo "Core system dependencies installed."
+            scons git-lfs build-essential rsync \
+            libffi-dev libssl-dev libzmq3-dev libsdl2-dev libqt5svg5-dev qttools5-dev
+          echo "System dependencies installed."
 
-      # --- 新增步骤: 运行仓库自带的设置脚本 ---
+      # Optional: Run your ubuntu_setup.sh if absolutely needed for more setup
       - name: Run ubuntu_setup.sh Script
         run: |
           SETUP_SCRIPT="tools/ubuntu_setup.sh"
           if [ -f "$SETUP_SCRIPT" ]; then
-            echo "Running $SETUP_SCRIPT..."
-            chmod +x $SETUP_SCRIPT
-            # 执行脚本，如果失败则终止 workflow (因为用户确认它是有效的)
-            ./$SETUP_SCRIPT || exit 1
-            echo "$SETUP_SCRIPT executed successfully."
+            chmod +x $SETUP_SCRIPT && ./$SETUP_SCRIPT || exit 1
           else
-            # 如果脚本不存在，根据你的确认，这可能是一个问题
-            echo "Error: Dependency setup script $SETUP_SCRIPT not found!"
-            exit 1 # 强制失败，因为脚本被认为是必要的
+            echo "Warning: $SETUP_SCRIPT not found."
           fi
-      # --- 结束新增步骤 ---
 
-        # 步骤 3: 使用 pip 安装 Python 依赖 (来自 pyproject.toml)
       - name: Install Python Dependencies (Pip from pyproject.toml)
         run: |
           echo "Installing Python dependencies via pip from pyproject.toml..."
-          # 升级 pip, wheel, setuptools 很重要，确保能良好处理 pyproject.toml
           python -m pip install --upgrade pip wheel setuptools
-
-          # --- 检查 pyproject.toml 是否存在 ---
           if [ -f "pyproject.toml" ]; then
-            echo "Found pyproject.toml. Installing dependencies defined within..."
-            # 使用 '.' 指示 pip 从当前目录安装项目及其依赖
-            # pip 会自动查找 pyproject.toml 并根据其内容安装
-            # 如果你的 pyproject.toml 定义了可选依赖 (extras) 且构建需要它们,
-            # 可能需要类似 pip install .[dev] 或 .[test] 的命令
-            # 但通常 pip install . 会安装核心运行时依赖
             pip install .
           else
-            # 如果连 pyproject.toml 都没有，依赖安装将失败
-            echo "Error: pyproject.toml not found in the repository root!"
+            echo "Error: pyproject.toml not found!"
             exit 1
           fi
-          echo "Python dependencies installed based on pyproject.toml."
+          echo "Python dependencies installed."
 
-
-      # 步骤 4: 拉取 Git LFS 文件
       - name: Pull Git LFS files
-        run: |
-          git lfs pull
-          echo "Git LFS files pulled."
+        run: git lfs pull
 
-      # 步骤 5: (可选) 检查环境用于调试
-      - name: Check Environment before SCons
+      # --- Build Step ---
+      - name: Build openpilot (Full Build)
+        id: build
         run: |
-          echo "Which Python:"
-          which python
-          echo "Python Version:"
-          python --version
-          echo "Which scons:"
-          which scons
-          echo "Installed packages (pip list):"
-          pip list | grep numpy # 检查 numpy 是否在列表里
-          echo "Attempting to import numpy:"
-          python -c "import numpy; print('Successfully imported numpy version:', numpy.__version__)" || exit 1
-
-      # 步骤 6: 构建 openpilot (scons)
-      - name: Build openpilot (scons)
-        run: |
-          echo "Starting build..."
-          scons -j$(nproc)
+          echo "Starting full build..."
+          # Perform a full build, as filtering happens afterwards
+          scons -j$(nproc) || exit 1
+          # Create a marker file similar to sunnypilot's workflow (optional)
+          touch prebuilt_marker
           echo "Build finished."
+          # Attempt to get version (adjust path/command if needed)
+          if [ -f "common/version.h" ]; then
+            VERSION=$(cat common/version.h | awk -F'"' '/COMMA_VERSION/{print $2}' || echo "unknown")
+          else
+            VERSION="unknown"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      # --- 以下步骤用于创建和推送 prebuilt 分支 ---
+      # --- Filtering Step ---
+      - name: Prepare Filtered Output Directory
+        run: |
+          FILTERED_OUTPUT_DIR="${{ github.workspace }}/filtered_output"
+          echo "Creating filtered output directory: $FILTERED_OUTPUT_DIR"
+          mkdir -p "$FILTERED_OUTPUT_DIR"
 
+          echo "Running rsync to filter files..."
+          # --- Start of Rsync rules (copied & adapted from sunnypilot workflow) ---
+          rsync -am --delete \
+            --include='**/panda/board/' \
+            --include='**/panda/board/obj' \
+            --include='**/panda/board/obj/panda.bin.signed' \
+            --include='**/panda/board/obj/panda_h7.bin.signed' \
+            --include='**/panda/board/obj/bootstub.panda.bin' \
+            --include='**/panda/board/obj/bootstub.panda_h7.bin' \
+            --exclude='.sconsign.dblite' \
+            --exclude='*.a' \
+            --exclude='*.o' \
+            --exclude='*.os' \
+            --exclude='*.pyc' \
+            --exclude='moc_*' \
+            --exclude='*.cc' \
+            --exclude='Jenkinsfile' \
+            --exclude='supercombo.onnx' \
+            --exclude='**/panda/board/*' \
+            --exclude='**/panda/board/obj/**' \
+            --exclude='**/panda/certs/' \
+            --exclude='**/panda/crypto/' \
+            --exclude='**/release/' \
+            --exclude='**/.github/' \
+            --exclude='**/selfdrive/ui/replay/' \
+            --exclude='**/__pycache__/' \
+            --exclude='**/selfdrive/ui/*.h' \
+            --exclude='**/selfdrive/ui/**/*.h' \
+            --exclude='**/selfdrive/ui/qt/offroad/sunnypilot/' \
+            # --exclude='${{env.SCONS_CACHE_DIR}}' # Removed, cache dir not used here
+            --exclude='**/.git/' \
+            --exclude='**/SConstruct' \
+            --exclude='**/SConscript' \
+            --exclude='**/.venv/' \
+            --exclude='filtered_output/' \
+            --exclude='prebuilt_marker' \
+            # --- End of Rsync rules ---
+            "${{ github.workspace }}/" "$FILTERED_OUTPUT_DIR/" # Source: workspace, Dest: filtered_output
+
+          echo "Files after filtering in $FILTERED_OUTPUT_DIR:"
+          ls -lR "$FILTERED_OUTPUT_DIR" | head -n 30 # List some filtered files for inspection
+
+      # --- Git Publishing Steps (Using Orphan Branch for Cleanliness) ---
       - name: Configure Git User
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
 
-      - name: Create or Checkout tn-prebuilt branch
+      - name: Create and Populate Orphan Branch
         run: |
-          # 切换到一个新的或已存在的 tn-prebuilt 分支
-          git checkout -B tn-prebuilt
-          echo "Switched to tn-prebuilt branch."
+          TARGET_BRANCH="tn-prebuilt"
+          TEMP_BRANCH="${TARGET_BRANCH}-temp-build"
+          FILTERED_OUTPUT_DIR="${{ github.workspace }}/filtered_output"
 
-      - name: Add all files (including build artifacts)
-        run: |
-          # 注意 .gitignore 规则，可能需要强制添加 (-f) 被忽略的构建产物
+          echo "Creating orphan branch $TEMP_BRANCH..."
+          git checkout --orphan $TEMP_BRANCH
+
+          echo "Cleaning workspace for orphan branch..."
+          # Remove all tracked files from index and working directory
+          git rm -rf . || true
+          # Remove all untracked files and directories (except .git)
+          git clean -xdff
+
+          echo "Copying filtered files from $FILTERED_OUTPUT_DIR to workspace root..."
+          # Use -a to preserve permissions etc., dot at end is crucial
+          rsync -a "$FILTERED_OUTPUT_DIR/" .
+
+          echo "Staging files..."
           git add -A .
-          echo "Added all files to staging area."
 
-      - name: Commit changes
+          echo "Git status:"
+          git status --porcelain
+
+      - name: Commit Filtered Files
         run: |
-          # 检查是否有文件变动需要提交
+          # Check if there are changes to commit
           if git diff --staged --quiet; then
-            echo "No changes to commit."
+            echo "No changes detected after filtering. Skipping commit and push."
+            # Optionally exit successfully or with a specific code/message
+            exit 0 # Exit successfully, nothing to push
           else
-            # 获取实际检出代码的 commit SHA
-            CHECKED_OUT_SHA=$(git rev-parse HEAD)
-            # 创建提交，包含源引用信息和 SHA
-            git commit -m "Prebuilt artifacts for ${{ steps.vars.outputs.source_desc }} (commit ${CHECKED_OUT_SHA})"
-            echo "Committed changes."
+            echo "Committing filtered files..."
+            COMMIT_MSG="Filtered prebuilt for ${{ steps.vars.outputs.source_desc }} (${{ steps.vars.outputs.source_sha }})\n\nVersion: ${{ steps.build.outputs.version }}"
+            git commit -m "$COMMIT_MSG"
+            echo "Commit created."
           fi
 
-      - name: Push tn-prebuilt branch
+      - name: Push Filtered Branch
         run: |
-          echo "Pushing tn-prebuilt branch..."
-          git push origin tn-prebuilt --force
-          echo "tn-prebuilt branch pushed successfully."
+          TARGET_BRANCH="tn-prebuilt"
+          TEMP_BRANCH="${TARGET_BRANCH}-temp-build"
+
+          # Check if the commit step produced a commit (might have skipped if no changes)
+          if ! git rev-parse HEAD > /dev/null 2>&1; then
+             echo "No commit found on $TEMP_BRANCH. Skipping push."
+             exit 0
+          fi
+
+          echo "Force pushing $TEMP_BRANCH to remote $TARGET_BRANCH..."
+          # Push the local temporary orphan branch to the actual target branch name on remote
+          git push --force origin $TEMP_BRANCH:$TARGET_BRANCH
+          echo "Filtered branch $TARGET_BRANCH pushed successfully."
