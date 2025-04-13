@@ -44,15 +44,25 @@ jobs:
         run: |
           echo "Installing dependencies..."
           sudo apt-get update -y
-          # !!! 请根据你的仓库实际情况修改此脚本路径 !!!
+          # --- 添加下面这行来显式安装 scons ---
+          sudo apt-get install -y scons
+          # -------------------------------------
+          echo "SCons installed explicitly." # 添加日志确认
+
+          # 尝试运行仓库自带的脚本（如果存在）
+          # !!! 仍然需要确认这个脚本路径是否适合你的 tn 分支 !!!
           if [ -f "tools/ubuntu_setup.sh" ]; then
-            ./tools/ubuntu_setup.sh || exit 1
+            echo "Running tools/ubuntu_setup.sh..."
+            # 确保脚本有执行权限
+            chmod +x tools/ubuntu_setup.sh
+            # 执行脚本，如果失败则输出警告但继续 (或者使用 `|| exit 1` 使其失败时终止 workflow)
+            ./tools/ubuntu_setup.sh || echo "Warning: tools/ubuntu_setup.sh execution failed."
           else
             echo "Dependency setup script not found at tools/ubuntu_setup.sh!"
-            # 在这里可以添加备用的依赖安装命令
-            exit 1
+            # 如果脚本不存在，你可能需要在这里添加更多必须的依赖安装命令
+            # 例如：sudo apt-get install -y git-lfs libzmq3-dev ... etc.
           fi
-          echo "Dependencies installed."
+          echo "Dependency installation step finished."
 
       - name: Build openpilot (scons)
         run: |
