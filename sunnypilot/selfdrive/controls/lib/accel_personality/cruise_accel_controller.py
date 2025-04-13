@@ -39,7 +39,6 @@ class CruiseAccelController:
     # if now - self._last_read_time < 5.0:
     #   return
     # self._last_read_time = now
-    
     personality_str = self._params.get("AccelPersonality", encoding='utf-8')
     if personality_str is not None:
       try:
