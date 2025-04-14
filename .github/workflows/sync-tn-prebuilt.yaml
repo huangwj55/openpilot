@@ -1,279 +1,77 @@
 # 文件名: .github/workflows/sync-sunnypilot-tn-prebuilt.yml
-# YAML - 使用 2 空格缩进，不要使用 Tab
+# YAML - 严格使用 2 空格缩进，无 Tab
 
 name: Sync sunnypilot tn-prebuilt with modifications (using GITHUB_TOKEN)
 
-# 0 空格缩进
 on:
-  # 2 空格缩进
   schedule:
-    # 4 空格缩进 (列表项)
     - cron: '0 10 * * *'
-  # 2 空格缩进
   workflow_dispatch:
 
-# 0 空格缩进
 jobs:
-  # 2 空格缩进
   sync:
-    # 4 空格缩进
     runs-on: ubuntu-latest
-    # 4 空格缩进
     steps:
 
-      # 6 空格缩进 (步骤列表项)
       - name: Checkout target repository (your repo baseline)
-        # 8 空格缩进
         uses: actions/checkout@v4
-        # 8 空格缩进
         with:
-          # 10 空格缩进
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # 6 空格缩进
       - name: Add sunnypilot remote and fetch tn-prebuilt branch
-        # 8 空格缩进
-        run: | # <-- 注意这里
-          # 10 空格缩进 (run: 下面的所有行)
+        run: |
           git remote add sunnypilot_source https://github.com/sunnypilot/sunnypilot.git
-          # 10 空格缩进
           echo "Fetching tn-prebuilt from sunnypilot..."
-          # 10 空格缩进
-          # 确保即使本地存在 tn-prebuilt 也获取最新远程数据
           git fetch sunnypilot_source tn-prebuilt --depth=1 --no-tags
-          # 10 空格缩进
           echo "Fetch completed."
 
-      # 6 空格缩进 (新增的关键步骤：切换工作区)
       - name: Checkout the fetched tn-prebuilt branch locally
-        # 8 空格缩进
-        run: | # <-- 注意这里
-          # 10 空格缩进 (run: 下面的所有行)
+        run: |
           echo "Checking out fetched branch into working directory..."
-          # 10 空格缩进
-          # -B 会创建新分支或重置同名分支到指定 commit
           git checkout -B tn-prebuilt refs/remotes/sunnypilot_source/tn-prebuilt
-          # 10 空格缩进
           echo "Working directory now contains tn-prebuilt content."
-          # 10 空格缩进
-          # git clean -fdx # 可选：清理未跟踪的文件，防止干扰
 
-      - name: Apply custom modifications using Python
-        # 8 空格
-        run: | # <-- run: 下面开始 10 空格缩进，整个 Python 代码块是这 10 空格的一部分
-          # 10 空格
-          python -c '''
-          # <-- Python 代码开始，其内部缩进遵循 Python 规范 (4 空格)
-          #     但相对于 YAML 文件左侧，这行注释是 10 空格 + Python 的 0 空格 = 10 空格
-          import sys
-          import re
-          import os
+      # 关键改动：调用外部 Python 脚本
+      - name: Apply custom modifications using external Python script
+        run: python .github/scripts/apply_modifications.py # 直接运行脚本
 
-          # --- Configuration ---
-          registration_file = "system/athena/registration.py"
-          launch_script = "launch_openpilot.sh"
-
-          # 定义目标行和替换行 (包括精确的前导空格)
-          imei1_target = "    imei1: str | None = None"
-          imei1_replacement = "    imei1=\'865420071781912\'" # 保留前导空格, 使用 Python 转义单引号
-          imei2_target = "    imei2: str | None = None"
-          imei2_replacement = "    imei2=\'865420071781904\'" # 保留前导空格, 使用 Python 转义单引号
-
-          # 定义要插入 launch_openpilot.sh 的行
-          lines_to_insert_in_launch = [
-              "export API_HOST=https://api.konik.ai",
-              "export ATHENA_HOST=wss://athena.konik.ai",
-              "export MAPS_HOST=https://api.konik.ai/maps"
-          ]
-
-          # --- Function to modify registration.py ---
-          def modify_registration(filename):
-              print(f"Attempting to modify {filename}...")
-              if not os.path.exists(filename):
-                  print(f"Error: {filename} not found!", file=sys.stderr)
-                  return False # Indicate failure
-
-              new_content = []
-              modified = False
-              try:
-                  with open(filename, "r", encoding="utf-8") as f:
-                      lines = f.readlines() # Read all lines to preserve endings
-
-                  for i, line in enumerate(lines):
-                      # 使用 rstrip() 比较内容，忽略行尾空白/换行符差异
-                      line_content_stripped = line.rstrip()
-
-                      # 1. Replace imei1 line (精确匹配包括前导空格)
-                      if line_content_stripped == imei1_target:
-                          # 检查是否已经是目标内容，避免不必要的修改和 git diff
-                          if imei1_replacement != line_content_stripped:
-                              print(f"  Replacing line {i+1} (imei1): {line_content_stripped}")
-                              print(f"  With: {imei1_replacement}")
-                              # 添加替换行，并保留原始行尾（通常是 \n）
-                              new_content.append(imei1_replacement + line[len(line_content_stripped):])
-                              modified = True
-                          else:
-                              # print(f"  Line {i+1} (imei1) already matches.")
-                              new_content.append(line) # 内容已匹配，保留原行
-                          continue # 已处理，跳过其他检查
-          
-                      # 2. Replace imei2 line (精确匹配包括前导空格)
-                      elif line_content_stripped == imei2_target:
-                          if imei2_replacement != line_content_stripped:
-                              print(f"  Replacing line {i+1} (imei2): {line_content_stripped}")
-                              print(f"  With: {imei2_replacement}")
-                              new_content.append(imei2_replacement + line[len(line_content_stripped):])
-                              modified = True
-                          else:
-                              # print(f"  Line {i+1} (imei2) already matches.")
-                              new_content.append(line)
-                          continue
-
-                      # 3. Comment out set_offroad_alert line
-                      #    使用正则匹配行首可选空格 + 函数调用
-                      elif re.match(r"^\s*set_offroad_alert\(\"Offroad_UnofficialHardware\",", line.lstrip()):
-                          # 仅当行首不是 '#' 时才添加注释
-                          if not line.lstrip().startswith("#"):
-                              print(f"  Commenting line {i+1}: {line.rstrip()}")
-                              # 在原始行前加 #，保留所有内容包括行尾
-                              new_content.append("#" + line)
-                              modified = True
-                          else:
-                              # print(f"  Line {i+1} already commented: {line.rstrip()}")
-                              new_content.append(line) # 已注释，保留原行
-                          continue
-
-                      # Default: 未匹配到任何规则，保留原始行
-                      new_content.append(line)
-
-                  # 仅当实际发生修改时才写回文件
-                  if modified:
-                      print(f"Writing changes back to {filename}")
-                      with open(filename, "w", encoding="utf-8") as f:
-                          f.writelines(new_content)
-                  else:
-                      print(f"No modifications needed for {filename}.")
-          
-                  return True # 操作成功（无论是否修改）
-
-              except Exception as e:
-                  print(f"Error processing {filename}: {e}", file=sys.stderr)
-                  return False # 操作失败
-
-          # --- Function to modify launch_openpilot.sh ---
-          def modify_launch_script(filename):
-              print(f"Attempting to modify {filename}...")
-              if not os.path.exists(filename):
-                  print(f"Error: {filename} not found!", file=sys.stderr)
-                  return False
-
-              try:
-                  with open(filename, "r", encoding="utf-8") as f:
-                      content_lines = f.readlines()
-
-                  # 检查需要插入的行是否已存在
-                  lines_exist_status = {line_to_insert: False for line_to_insert in lines_to_insert_in_launch}
-                  for existing_line in content_lines:
-                      stripped_existing = existing_line.strip()
-                      for line_to_insert in lines_to_insert_in_launch:
-                          if line_to_insert.strip() == stripped_existing:
-                              lines_exist_status[line_to_insert] = True
-
-                  if all(lines_exist_status.values()):
-                      print(f"All required export lines already exist in {filename}. No insertion needed.")
-                      return True # 无需修改
-
-                  # 寻找插入点：shebang '#!/bin/bash' 所在的行索引
-                  insertion_index = -1
-                  for i, line in enumerate(content_lines):
-                      if line.strip() == "#!/bin/bash":
-                          insertion_index = i
-                          break
-
-                  if insertion_index == -1:
-                      print(f"Error: Shebang '#!/bin/bash' not found in {filename}. Cannot insert lines.", file=sys.stderr)
-                      return False
-
-                  # 准备要插入的内容（只包括尚未存在的行）
-                  lines_to_insert_now = []
-                  for line_to_insert in lines_to_insert_in_launch:
-                       if not lines_exist_status[line_to_insert]:
-                           print(f"  Will insert: {line_to_insert}")
-                           # 确保插入的行有换行符
-                           lines_to_insert_now.append(line_to_insert + "\\n" if not line_to_insert.endswith("\\n") else line_to_insert)
-
-                  # 如果确实有需要插入的行
-                  if lines_to_insert_now:
-                      print(f"Inserting lines after line {insertion_index + 1}")
-                      # 在 shebang 行之后插入所有需要添加的行
-                      new_content = content_lines[:insertion_index + 1] + lines_to_insert_now + content_lines[insertion_index + 1:]
-
-                      print(f"Writing changes back to {filename}")
-                      with open(filename, "w", encoding="utf-8") as f:
-                          f.writelines(new_content)
-                  else:
-                      # 逻辑上这个分支不应该到达，因为前面有 all() 检查，但作为保险
-                      print("No new lines needed to be inserted.")
-
-                  return True # 操作成功
-
-              except Exception as e:
-                  print(f"Error processing {filename}: {e}", file=sys.stderr)
-                  return False # 操作失败
-
-
-          # --- Execute modifications ---
-          print("Running Python modification script...")
-          success1 = modify_registration(registration_file)
-          success2 = modify_launch_script(launch_script)
-
-          # 根据脚本执行结果决定 GitHub Action 步骤的成败
-          if success1 and success2:
-              print("Python modification script finished successfully.")
-              sys.exit(0) # 退出码 0 表示成功
-          else:
-              print("One or more file modifications failed in Python script.", file=sys.stderr)
-              sys.exit(1) # 非零退出码表示失败，将使 GitHub Action 步骤失败
-          ''' # <-- Python 代码块结束 '''
-
-      # 6 空格缩进 (新增的关键步骤：提交修改)
-      - name: Commit the changes
-        # 8 空格缩进
-        run: | # <-- 注意这里
-          # 10 空格缩进 (run: 下面的所有行)
-          git config --global user.name 'github-actions[bot]'
-          # 10 空格缩进
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-
-          # 10 空格缩进 (检查是否有更改)
-          if git diff --quiet && git diff --staged --quiet; then
-            # 12 空格缩进
-            echo "No changes detected by sed commands or files missing. Nothing to commit."
+      # 检查 Python 脚本执行后的文件状态
+      - name: Check file status after modification script
+        id: check_status
+        run: |
+          echo "Checking git status for modified files..."
+          # 输出状态到 stdout，方便调试
+          git status --porcelain system/athena/registration.py launch_openpilot.sh
+          # 设置一个输出变量，表示是否有变更
+          if [[ -n $(git status --porcelain system/athena/registration.py launch_openpilot.sh) ]]; then
+            echo "changes_detected=true" >> $GITHUB_OUTPUT
           else
-            # 12 空格缩进
-            echo "Staging and committing changes..."
-            # 12 空格缩进 (显式添加可能被修改的文件)
-            git add system/athena/registration.py launch_openpilot.sh
-            # 12 空格缩进 (再次检查暂存区)
-            if git diff --staged --quiet; then
-              # 14 空格缩进
-              echo "Files were staged but content matches HEAD. Nothing to commit."
-            else
-              # 14 空格缩进
-              git commit -m "Apply custom modifications after syncing from sunnypilot/tn-prebuilt"
-              # 14 空格缩进
-              echo "Changes committed."
-            fi
+            echo "changes_detected=false" >> $GITHUB_OUTPUT
           fi
 
-      # 6 空格缩进 (修正推送目标：推送本地修改后的分支)
+      - name: Commit the changes
+        # 仅当上一步检测到更改时才运行此步骤
+        if: steps.check_status.outputs.changes_detected == 'true'
+        run: |
+          echo "Changes detected. Staging and committing..."
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add system/athena/registration.py launch_openpilot.sh
+          # 再次检查暂存区，以防万一 add 后无实质更改 (理论上不会发生)
+          if git diff --staged --quiet; then
+             echo "Files were staged but content matches HEAD. Skipping commit."
+          else
+             git commit -m "Apply custom modifications via script after syncing from sunnypilot/tn-prebuilt"
+             echo "Changes committed."
+          fi
+
+      - name: No changes to commit
+        # 如果上一步未检测到更改，则打印信息
+        if: steps.check_status.outputs.changes_detected == 'false'
+        run: echo "No file changes detected by Python script. Nothing to commit."
+
       - name: Force push modified tn-prebuilt to your repository
-        # 8 空格缩进
-        run: | # <-- 注意这里
-          # 10 空格缩进 (run: 下面的所有行)
-          echo "Pushing modified local tn-prebuilt to origin/tn-prebuilt..."
-          # 10 空格缩进
-          # 推送本地 tn-prebuilt 分支到 origin 的 tn-prebuilt 分支
+        run: |
+          echo "Pushing local tn-prebuilt to origin/tn-prebuilt..."
           git push origin tn-prebuilt --force
-          # 10 空格缩进
           echo "Push completed."
