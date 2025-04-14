@@ -87,64 +87,47 @@ def modify_registration(filename):
         # else: No explicit close needed for fileinput context
 
 
-# --- Function to modify launch_openpilot.sh ---
+# --- Function to modify launch_openpilot.sh (SIMPLIFIED) ---
 def modify_launch_script(filename):
-    print(f"Attempting to modify {filename}...")
+    """
+    Directly inserts the specified export lines at the second line (index 1)
+    of the file, assuming the first line is the shebang.
+    Does NOT check if lines already exist or validate the shebang content.
+    """
+    print(f"Attempting simple modification of {filename}...")
     if not os.path.exists(filename):
         print(f"Error: {filename} not found!", file=sys.stderr)
         return False
+
+    lines_to_insert = [
+        "export API_HOST=https://api.konik.ai\n", # Ensure newline
+        "export ATHENA_HOST=wss://athena.konik.ai\n", # Ensure newline
+        "export MAPS_HOST=https://api.konik.ai/maps\n"  # Ensure newline
+    ]
 
     try:
         with open(filename, "r", encoding="utf-8") as f:
             content_lines = f.readlines()
 
-        # 检查需要插入的行是否已存在
-        lines_exist_status = {line_to_insert: False for line_to_insert in lines_to_insert_in_launch}
-        current_content_stripped = {line.strip() for line in content_lines} # 优化查找
-
-        for line_to_insert in lines_to_insert_in_launch:
-            if line_to_insert in current_content_stripped:
-                lines_exist_status[line_to_insert] = True
-
-        if all(lines_exist_status.values()):
-            print(f"All required export lines already exist in {filename}. No insertion needed.")
-            return True # 无需修改
-
-        # 寻找插入点：shebang '#!/bin/bash' 所在的行索引
-        insertion_index = -1
-        for i, line in enumerate(content_lines):
-            if line.strip() == "#!/bin/bash":
-                insertion_index = i
-                break
-
-        if insertion_index == -1:
-            print(f"Error: Shebang '#!/bin/bash' not found in {filename}. Cannot insert lines.", file=sys.stderr)
+        # Basic check: Ensure file has at least one line (the shebang)
+        if not content_lines:
+            print(f"Error: {filename} is empty or could not be read properly.", file=sys.stderr)
             return False
 
-        # 准备要插入的内容（只包括尚未存在的行, 确保有换行）
-        lines_to_insert_now = []
-        for line_to_insert in lines_to_insert_in_launch:
-             if not lines_exist_status[line_to_insert]:
-                 print(f"  Will insert: {line_to_insert}")
-                 lines_to_insert_now.append(line_to_insert + "\n") # 确保加换行符
+        # Construct the new content: first line + lines to insert + rest of the lines
+        # Assumes content_lines[0] is the shebang
+        new_content = content_lines[:1] + lines_to_insert + content_lines[1:]
 
-        # 如果确实有需要插入的行
-        if lines_to_insert_now:
-            print(f"Inserting lines after line {insertion_index + 1}")
-            # 在 shebang 行之后插入所有需要添加的行
-            new_content = content_lines[:insertion_index + 1] + lines_to_insert_now + content_lines[insertion_index + 1:]
+        print(f"Writing simplified changes back to {filename} (inserting at line 2).")
+        with open(filename, "w", encoding="utf-8") as f:
+            f.writelines(new_content)
 
-            print(f"Writing changes back to {filename}")
-            with open(filename, "w", encoding="utf-8") as f:
-                f.writelines(new_content)
-        else:
-            print("No new lines needed to be inserted.")
-
-        return True # 操作成功
+        print(f"Simple modification of {filename} successful.")
+        return True # Operation successful
 
     except Exception as e:
-        print(f"Error processing {filename}: {e}", file=sys.stderr)
-        return False # 操作失败
+        print(f"Error processing {filename} during simple modification: {e}", file=sys.stderr)
+        return False # Operation failed
 
 # --- Main execution ---
 print("Running modification script...")
