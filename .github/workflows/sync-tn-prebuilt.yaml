@@ -58,97 +58,183 @@ jobs:
           # 10 空格缩进
           # git clean -fdx # 可选：清理未跟踪的文件，防止干扰
 
-      # 6 空格缩进
-      - name: Apply custom modifications using sed (revised)
-        # 8 空格缩进
-        run: | # <-- 注意这里
-          # 10 空格缩进 (run: 下面的所有行)
-          echo "Applying modifications to checked-out files..."
+      - name: Apply custom modifications using Python
+        # 8 空格
+        run: | # <-- run: 下面开始 10 空格缩进，整个 Python 代码块是这 10 空格的一部分
+          # 10 空格
+          python -c '''
+          # <-- Python 代码开始，其内部缩进遵循 Python 规范 (4 空格)
+          #     但相对于 YAML 文件左侧，这行注释是 10 空格 + Python 的 0 空格 = 10 空格
+          import sys
+          import re
+          import os
 
-          # 10 空格缩进 (修改 system/athena/registration.py)
-          echo "Modifying registration.py..."
-          # 使用 '_' 作为 sed 分隔符，提高稳定性
-          # 1. 修改 imei1 (增加 \s* 匹配可选前导空格)
-          sed -i "s_^\s*imei1: str | None = None$_    imei1='865420071781912'_g" system/athena/registration.py
-          # 2. 修改 imei2 (增加 \s* 匹配可选前导空格)
-          sed -i "s_^\s*imei2: str | None = None$_    imei2='865420071781904'_g" system/athena/registration.py
-          # 3. 注释掉 set_offroad_alert 行 (使用 _ 分隔符，替换内容是 #&)
-          sed -i 's_^\s*set_offroad_alert("Offroad_UnofficialHardware",.*_#&_' system/athena/registration.py
-          echo "registration.py modification attempt finished."
+          # --- Configuration ---
+          registration_file = "system/athena/registration.py"
+          launch_script = "launch_openpilot.sh"
 
-          # 10 空格缩进 (修改 launch_openpilot.sh，拆分为单行追加)
-          echo "Modifying launch_openpilot.sh..."
-          # 查找 shebang '#!/bin/bash' 的行号
-          SHEBANG_LINE=$(grep -n '^#!/bin/bash' launch_openpilot.sh | cut -d: -f1)
+          # 定义目标行和替换行 (包括精确的前导空格)
+          imei1_target = "    imei1: str | None = None"
+          imei1_replacement = "    imei1=\'865420071781912\'" # 保留前导空格, 使用 Python 转义单引号
+          imei2_target = "    imei2: str | None = None"
+          imei2_replacement = "    imei2=\'865420071781904\'" # 保留前导空格, 使用 Python 转义单引号
 
-          # 检查是否找到行号
-          if [ -z "$SHEBANG_LINE" ]; then
-            echo "Error: Shebang line '#!/bin/bash' not found in launch_openpilot.sh" >&2
-            exit 1 # 退出脚本并标记此步骤失败
-          fi
+          # 定义要插入 launch_openpilot.sh 的行
+          lines_to_insert_in_launch = [
+              "export API_HOST=https://api.konik.ai",
+              "export ATHENA_HOST=wss://athena.konik.ai",
+              "export MAPS_HOST=https://api.konik.ai/maps"
+          ]
 
-          echo "Found shebang at line $SHEBANG_LINE. Inserting export lines one by one..."
+          # --- Function to modify registration.py ---
+          def modify_registration(filename):
+              print(f"Attempting to modify {filename}...")
+              if not os.path.exists(filename):
+                  print(f"Error: {filename} not found!", file=sys.stderr)
+                  return False # Indicate failure
 
-          # 检查每一行是否已存在，避免重复添加
-          if ! grep -q "export API_HOST=https://api.konik.ai" launch_openpilot.sh; then
-            # 使用 'a' 命令在指定行号后追加内容
-            sed -i "${SHEBANG_LINE}a export API_HOST=https://api.konik.ai" launch_openpilot.sh
-            echo "Inserted API_HOST."
-          else
-            echo "API_HOST line already exists."
-          fi
+              new_content = []
+              modified = False
+              try:
+                  with open(filename, "r", encoding="utf-8") as f:
+                      lines = f.readlines() # Read all lines to preserve endings
 
-          if ! grep -q "export ATHENA_HOST=wss://athena.konik.ai" launch_openpilot.sh; then
-            # 再次获取行号，以防万一文件被修改 (虽然理论上这里不会)
-            # 或者直接使用之前的行号，因为 'a' 命令总是在其后添加
-            sed -i "${SHEBANG_LINE}a export ATHENA_HOST=wss://athena.konik.ai" launch_openpilot.sh
-            echo "Inserted ATHENA_HOST."
-          else
-            echo "ATHENA_HOST line already exists."
-          fi
-          # 注意：为了保持插入顺序 (API -> ATHENA -> MAPS)，需要按这个顺序执行 sed 'a' 命令
-          # 因为 sed 'a' 是追加到指定行之后，后执行的会插在更前面行的下方
+                  for i, line in enumerate(lines):
+                      # 使用 rstrip() 比较内容，忽略行尾空白/换行符差异
+                      line_content_stripped = line.rstrip()
 
-          if ! grep -q "export MAPS_HOST=https://api.konik.ai/maps" launch_openpilot.sh; then
-             sed -i "${SHEBANG_LINE}a export MAPS_HOST=https://api.konik.ai/maps" launch_openpilot.sh
-             echo "Inserted MAPS_HOST."
-          else
-             echo "MAPS_HOST line already exists."
-          fi
+                      # 1. Replace imei1 line (精确匹配包括前导空格)
+                      if line_content_stripped == imei1_target:
+                          # 检查是否已经是目标内容，避免不必要的修改和 git diff
+                          if imei1_replacement != line_content_stripped:
+                              print(f"  Replacing line {i+1} (imei1): {line_content_stripped}")
+                              print(f"  With: {imei1_replacement}")
+                              # 添加替换行，并保留原始行尾（通常是 \n）
+                              new_content.append(imei1_replacement + line[len(line_content_stripped):])
+                              modified = True
+                          else:
+                              # print(f"  Line {i+1} (imei1) already matches.")
+                              new_content.append(line) # 内容已匹配，保留原行
+                          continue # 已处理，跳过其他检查
+          
+                      # 2. Replace imei2 line (精确匹配包括前导空格)
+                      elif line_content_stripped == imei2_target:
+                          if imei2_replacement != line_content_stripped:
+                              print(f"  Replacing line {i+1} (imei2): {line_content_stripped}")
+                              print(f"  With: {imei2_replacement}")
+                              new_content.append(imei2_replacement + line[len(line_content_stripped):])
+                              modified = True
+                          else:
+                              # print(f"  Line {i+1} (imei2) already matches.")
+                              new_content.append(line)
+                          continue
 
-          # **重要**: 上面的逐行 sed -i "${SHEBANG_LINE}a ..." 会导致插入顺序是反的！
-          # 正确的方法是按期望顺序插入，或者使用不同的行号/标记。
-          # 最简单的修正：一次性用改进的多行追加，或者用更复杂的脚本逻辑。
-          # 让我们尝试修正后的逐行插入逻辑：
+                      # 3. Comment out set_offroad_alert line
+                      #    使用正则匹配行首可选空格 + 函数调用
+                      elif re.match(r"^\s*set_offroad_alert\(\"Offroad_UnofficialHardware\",", line.lstrip()):
+                          # 仅当行首不是 '#' 时才添加注释
+                          if not line.lstrip().startswith("#"):
+                              print(f"  Commenting line {i+1}: {line.rstrip()}")
+                              # 在原始行前加 #，保留所有内容包括行尾
+                              new_content.append("#" + line)
+                              modified = True
+                          else:
+                              # print(f"  Line {i+1} already commented: {line.rstrip()}")
+                              new_content.append(line) # 已注释，保留原行
+                          continue
 
-          echo "Re-checking and inserting for correct order..."
-          # 先添加最后一行
-          if ! grep -q "export MAPS_HOST=https://api.konik.ai/maps" launch_openpilot.sh; then
-             sed -i "${SHEBANG_LINE}a export MAPS_HOST=https://api.konik.ai/maps" launch_openpilot.sh
-             echo "Inserted MAPS_HOST (pass 2)."
-          fi
-          # 再添加中间一行 (它会被加在 SHEBANG_LINE 之后，MAPS_HOST 之前)
-          if ! grep -q "export ATHENA_HOST=wss://athena.konik.ai" launch_openpilot.sh; then
-             sed -i "${SHEBANG_LINE}a export ATHENA_HOST=wss://athena.konik.ai" launch_openpilot.sh
-             echo "Inserted ATHENA_HOST (pass 2)."
-          fi
-          # 最后添加第一行 (它会被加在 SHEBANG_LINE 之后，ATHENA_HOST 之前)
-          if ! grep -q "export API_HOST=https://api.konik.ai" launch_openpilot.sh; then
-             sed -i "${SHEBANG_LINE}a export API_HOST=https://api.konik.ai" launch_openpilot.sh
-             echo "Inserted API_HOST (pass 2)."
-          fi
+                      # Default: 未匹配到任何规则，保留原始行
+                      new_content.append(line)
+
+                  # 仅当实际发生修改时才写回文件
+                  if modified:
+                      print(f"Writing changes back to {filename}")
+                      with open(filename, "w", encoding="utf-8") as f:
+                          f.writelines(new_content)
+                  else:
+                      print(f"No modifications needed for {filename}.")
+          
+                  return True # 操作成功（无论是否修改）
+
+              except Exception as e:
+                  print(f"Error processing {filename}: {e}", file=sys.stderr)
+                  return False # 操作失败
+
+          # --- Function to modify launch_openpilot.sh ---
+          def modify_launch_script(filename):
+              print(f"Attempting to modify {filename}...")
+              if not os.path.exists(filename):
+                  print(f"Error: {filename} not found!", file=sys.stderr)
+                  return False
+
+              try:
+                  with open(filename, "r", encoding="utf-8") as f:
+                      content_lines = f.readlines()
+
+                  # 检查需要插入的行是否已存在
+                  lines_exist_status = {line_to_insert: False for line_to_insert in lines_to_insert_in_launch}
+                  for existing_line in content_lines:
+                      stripped_existing = existing_line.strip()
+                      for line_to_insert in lines_to_insert_in_launch:
+                          if line_to_insert.strip() == stripped_existing:
+                              lines_exist_status[line_to_insert] = True
+
+                  if all(lines_exist_status.values()):
+                      print(f"All required export lines already exist in {filename}. No insertion needed.")
+                      return True # 无需修改
+
+                  # 寻找插入点：shebang '#!/bin/bash' 所在的行索引
+                  insertion_index = -1
+                  for i, line in enumerate(content_lines):
+                      if line.strip() == "#!/bin/bash":
+                          insertion_index = i
+                          break
+
+                  if insertion_index == -1:
+                      print(f"Error: Shebang '#!/bin/bash' not found in {filename}. Cannot insert lines.", file=sys.stderr)
+                      return False
+
+                  # 准备要插入的内容（只包括尚未存在的行）
+                  lines_to_insert_now = []
+                  for line_to_insert in lines_to_insert_in_launch:
+                       if not lines_exist_status[line_to_insert]:
+                           print(f"  Will insert: {line_to_insert}")
+                           # 确保插入的行有换行符
+                           lines_to_insert_now.append(line_to_insert + "\\n" if not line_to_insert.endswith("\\n") else line_to_insert)
+
+                  # 如果确实有需要插入的行
+                  if lines_to_insert_now:
+                      print(f"Inserting lines after line {insertion_index + 1}")
+                      # 在 shebang 行之后插入所有需要添加的行
+                      new_content = content_lines[:insertion_index + 1] + lines_to_insert_now + content_lines[insertion_index + 1:]
+
+                      print(f"Writing changes back to {filename}")
+                      with open(filename, "w", encoding="utf-8") as f:
+                          f.writelines(new_content)
+                  else:
+                      # 逻辑上这个分支不应该到达，因为前面有 all() 检查，但作为保险
+                      print("No new lines needed to be inserted.")
+
+                  return True # 操作成功
+
+              except Exception as e:
+                  print(f"Error processing {filename}: {e}", file=sys.stderr)
+                  return False # 操作失败
 
 
-          echo "launch_openpilot.sh modification attempt finished."
+          # --- Execute modifications ---
+          print("Running Python modification script...")
+          success1 = modify_registration(registration_file)
+          success2 = modify_launch_script(launch_script)
 
-          # 10 空格缩进 (检查修改结果)
-          echo "Modifications applied. Checking diffs..."
-          echo "--- registration.py status & diff ---"
-          git status --porcelain system/athena/registration.py
-          git diff system/athena/registration.py || echo "No changes detected in registration.py or file not found."
-          echo "--- launch_openpilot.sh status & diff ---"
-          git status --porcelain launch_openpilot.sh
-          git diff launch_openpilot.sh || echo "No changes detected in launch_openpilot.sh or file not found."
+          # 根据脚本执行结果决定 GitHub Action 步骤的成败
+          if success1 and success2:
+              print("Python modification script finished successfully.")
+              sys.exit(0) # 退出码 0 表示成功
+          else:
+              print("One or more file modifications failed in Python script.", file=sys.stderr)
+              sys.exit(1) # 非零退出码表示失败，将使 GitHub Action 步骤失败
+          ''' # <-- Python 代码块结束 '''
 
       # 6 空格缩进 (新增的关键步骤：提交修改)
       - name: Commit the changes
