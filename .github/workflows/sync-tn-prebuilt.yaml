@@ -1,0 +1,50 @@
+# 文件名: .github/workflows/sync-sunnypilot-tn-prebuilt.yml
+# (建议放在你的 openpilot 仓库的 .github/workflows/ 目录下)
+
+name: Sync sunnypilot tn-prebuilt (using GITHUB_TOKEN) # 名称中注明使用的令牌类型
+
+on:
+  schedule:
+    - cron: '0 10 * * *'  # 每天 UTC 10 点运行 (北京时间下午 6 点)
+  workflow_dispatch:  # 允许在 GitHub Actions 页面手动触发
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest # 使用最新的 Ubuntu 运行环境
+
+    steps:
+      # 1. Checkout 你的目标仓库 (即运行此 Action 的仓库)
+      #    - 使用 actions/checkout@v4
+      #    - fetch-depth: 0 获取所有历史记录
+      #    - token: 使用默认的 GITHUB_TOKEN 进行认证，以便后续推送到本仓库
+      - name: Checkout target repository (your repo)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 获取完整历史，以便顺利强制推送
+          token: ${{ secrets.GITHUB_TOKEN }} # 使用 GitHub Actions 自动提供的令牌
+
+      # 2. 添加 sunnypilot 仓库作为远程源 (remote) 并仅获取 tn-prebuilt 分支
+      #    - remote add: 添加一个名为 'sunnypilot_source' 的远程仓库地址
+      #    - fetch: 从 'sunnypilot_source' 获取 'tn-prebuilt' 分支
+      #    - --depth=1: 只获取该分支最新的 commit，极大加快 fetch 速度
+      #    - --no-tags: 不获取 sunnypilot 仓库的 tags
+      - name: Add sunnypilot remote and fetch tn-prebuilt branch
+        run: |
+          git remote add sunnypilot_source https://github.com/sunnypilot/sunnypilot.git
+          echo "Fetching tn-prebuilt from sunnypilot..."
+          git fetch sunnypilot_source tn-prebuilt --depth=1 --no-tags
+          echo "Fetch completed."
+
+      # 3. 将获取到的 sunnypilot/tn-prebuilt 分支强制推送到你的仓库的 tn-prebuilt 分支
+      #    - git push: 推送到 origin (即你的仓库)
+      #    - <source>:<destination>: 将远程获取的分支推送到你的仓库的目标分支
+      #    - --force: 强制推送，覆盖目标分支历史
+      - name: Force push tn-prebuilt to your repository
+        run: |
+          echo "Pushing fetched tn-prebuilt to origin/tn-prebuilt..."
+          # 配置 git 用户信息，对于使用 GITHUB_TOKEN 推送有时是必要的
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          # 直接将 fetch 下来的远程分支引用推送到你的 origin 对应的分支名
+          git push origin refs/remotes/sunnypilot_source/tn-prebuilt:refs/heads/tn-prebuilt --force
+          echo "Push completed."
