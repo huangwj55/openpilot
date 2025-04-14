@@ -58,30 +58,87 @@ jobs:
           # 10 空格缩进
           # git clean -fdx # 可选：清理未跟踪的文件，防止干扰
 
-      # 6 空格缩进 (现在修改的是正确的文件)
-      - name: Apply custom modifications using sed
+      # 6 空格缩进
+      - name: Apply custom modifications using sed (revised)
         # 8 空格缩进
         run: | # <-- 注意这里
           # 10 空格缩进 (run: 下面的所有行)
           echo "Applying modifications to checked-out files..."
 
           # 10 空格缩进 (修改 system/athena/registration.py)
-          # 使用 '#' 作为 sed 分隔符
-          # 1. 修改 imei1
-          sed -i "s#^    imei1: str | None = None$#    imei1='865420071781912'#g" system/athena/registration.py
-          # 2. 修改 imei2
-          sed -i "s#^    imei2: str | None = None$#    imei2='865420071781904'#g" system/athena/registration.py
-          # 3. 注释掉 set_offroad_alert 行 (替换内容中的 '#' 需转义)
-          sed -i 's#^ *set_offroad_alert("Offroad_UnofficialHardware",.*#\#&#' system/athena/registration.py
+          echo "Modifying registration.py..."
+          # 使用 '_' 作为 sed 分隔符，提高稳定性
+          # 1. 修改 imei1 (增加 \s* 匹配可选前导空格)
+          sed -i "s_^\s*imei1: str | None = None$_    imei1='865420071781912'_g" system/athena/registration.py
+          # 2. 修改 imei2 (增加 \s* 匹配可选前导空格)
+          sed -i "s_^\s*imei2: str | None = None$_    imei2='865420071781904'_g" system/athena/registration.py
+          # 3. 注释掉 set_offroad_alert 行 (使用 _ 分隔符，替换内容是 #&)
+          sed -i 's_^\s*set_offroad_alert("Offroad_UnofficialHardware",.*_#&_' system/athena/registration.py
           echo "registration.py modification attempt finished."
 
-          # 10 空格缩进 (修改 launch_openpilot.sh)
-          # 在第二行 (即 #!/bin/bash 之后) 插入环境变量导出
-          sed -i '/^#!\/bin\/bash/a \
-          export API_HOST=https://api.konik.ai\
-          export ATHENA_HOST=wss://athena.konik.ai\
-          export MAPS_HOST=https://api.konik.ai/maps
-          ' launch_openpilot.sh
+          # 10 空格缩进 (修改 launch_openpilot.sh，拆分为单行追加)
+          echo "Modifying launch_openpilot.sh..."
+          # 查找 shebang '#!/bin/bash' 的行号
+          SHEBANG_LINE=$(grep -n '^#!/bin/bash' launch_openpilot.sh | cut -d: -f1)
+
+          # 检查是否找到行号
+          if [ -z "$SHEBANG_LINE" ]; then
+            echo "Error: Shebang line '#!/bin/bash' not found in launch_openpilot.sh" >&2
+            exit 1 # 退出脚本并标记此步骤失败
+          fi
+
+          echo "Found shebang at line $SHEBANG_LINE. Inserting export lines one by one..."
+
+          # 检查每一行是否已存在，避免重复添加
+          if ! grep -q "export API_HOST=https://api.konik.ai" launch_openpilot.sh; then
+            # 使用 'a' 命令在指定行号后追加内容
+            sed -i "${SHEBANG_LINE}a export API_HOST=https://api.konik.ai" launch_openpilot.sh
+            echo "Inserted API_HOST."
+          else
+            echo "API_HOST line already exists."
+          fi
+
+          if ! grep -q "export ATHENA_HOST=wss://athena.konik.ai" launch_openpilot.sh; then
+            # 再次获取行号，以防万一文件被修改 (虽然理论上这里不会)
+            # 或者直接使用之前的行号，因为 'a' 命令总是在其后添加
+            sed -i "${SHEBANG_LINE}a export ATHENA_HOST=wss://athena.konik.ai" launch_openpilot.sh
+            echo "Inserted ATHENA_HOST."
+          else
+            echo "ATHENA_HOST line already exists."
+          fi
+          # 注意：为了保持插入顺序 (API -> ATHENA -> MAPS)，需要按这个顺序执行 sed 'a' 命令
+          # 因为 sed 'a' 是追加到指定行之后，后执行的会插在更前面行的下方
+
+          if ! grep -q "export MAPS_HOST=https://api.konik.ai/maps" launch_openpilot.sh; then
+             sed -i "${SHEBANG_LINE}a export MAPS_HOST=https://api.konik.ai/maps" launch_openpilot.sh
+             echo "Inserted MAPS_HOST."
+          else
+             echo "MAPS_HOST line already exists."
+          fi
+
+          # **重要**: 上面的逐行 sed -i "${SHEBANG_LINE}a ..." 会导致插入顺序是反的！
+          # 正确的方法是按期望顺序插入，或者使用不同的行号/标记。
+          # 最简单的修正：一次性用改进的多行追加，或者用更复杂的脚本逻辑。
+          # 让我们尝试修正后的逐行插入逻辑：
+
+          echo "Re-checking and inserting for correct order..."
+          # 先添加最后一行
+          if ! grep -q "export MAPS_HOST=https://api.konik.ai/maps" launch_openpilot.sh; then
+             sed -i "${SHEBANG_LINE}a export MAPS_HOST=https://api.konik.ai/maps" launch_openpilot.sh
+             echo "Inserted MAPS_HOST (pass 2)."
+          fi
+          # 再添加中间一行 (它会被加在 SHEBANG_LINE 之后，MAPS_HOST 之前)
+          if ! grep -q "export ATHENA_HOST=wss://athena.konik.ai" launch_openpilot.sh; then
+             sed -i "${SHEBANG_LINE}a export ATHENA_HOST=wss://athena.konik.ai" launch_openpilot.sh
+             echo "Inserted ATHENA_HOST (pass 2)."
+          fi
+          # 最后添加第一行 (它会被加在 SHEBANG_LINE 之后，ATHENA_HOST 之前)
+          if ! grep -q "export API_HOST=https://api.konik.ai" launch_openpilot.sh; then
+             sed -i "${SHEBANG_LINE}a export API_HOST=https://api.konik.ai" launch_openpilot.sh
+             echo "Inserted API_HOST (pass 2)."
+          fi
+
+
           echo "launch_openpilot.sh modification attempt finished."
 
           # 10 空格缩进 (检查修改结果)
