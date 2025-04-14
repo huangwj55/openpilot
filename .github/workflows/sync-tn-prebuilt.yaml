@@ -34,7 +34,7 @@ jobs:
           echo "Fetching tn-prebuilt from sunnypilot..."
           git fetch sunnypilot_source tn-prebuilt --depth=1 --no-tags
           echo "Fetch completed."
- - name: Apply custom modifications
+      - name: Apply custom modifications
         run: |
           echo "Applying modifications..."
 
@@ -52,10 +52,10 @@ jobs:
           # 在第二行 (即 #!/bin/bash 之后) 插入环境变量导出
           # 这个命令使用 '/' 分隔符和 'a' 命令，没有冲突，保持不变
           sed -i '/^#!\/bin\/bash/a \
-export API_HOST=https://api.konik.ai\
-export ATHENA_HOST=wss://athena.konik.ai\
-export MAPS_HOST=https://api.konik.ai/maps
-' launch_openpilot.sh
+          export API_HOST=https://api.konik.ai\
+          export ATHENA_HOST=wss://athena.konik.ai\
+          export MAPS_HOST=https://api.konik.ai/maps
+          ' launch_openpilot.sh
 
           echo "Modifications applied."
           echo "--- registration.py diff ---"
