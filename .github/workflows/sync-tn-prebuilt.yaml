@@ -34,35 +34,38 @@ jobs:
           echo "Fetching tn-prebuilt from sunnypilot..."
           git fetch sunnypilot_source tn-prebuilt --depth=1 --no-tags
           echo "Fetch completed."
-# 4. 修改文件
-      - name: Apply custom modifications
+ - name: Apply custom modifications
         run: |
           echo "Applying modifications..."
 
           # 修改 system/athena/registration.py
-          # 注意: sed 的 -i 参数直接修改文件。确保模式匹配准确。
-          # 使用 | 作为分隔符，避免路径中的 / 与 sed 命令冲突
+          # 使用 '#' 作为 sed 分隔符，因为原始模式包含 '|'
           # 1. 修改 imei1 (精确匹配，包括前导空格)
-          sed -i "s|^    imei1: str | None = None$|    imei1='865420071781912'|g" system/athena/registration.py
+          sed -i "s#^    imei1: str | None = None$#    imei1='865420071781912'#g" system/athena/registration.py
           # 2. 修改 imei2 (精确匹配，包括前导空格)
-          sed -i "s|^    imei2: str | None = None$|    imei2='865420071781904'|g" system/athena/registration.py
+          sed -i "s#^    imei2: str | None = None$#    imei2='865420071781904'#g" system/athena/registration.py
           # 3. 注释掉 set_offroad_alert 行 (匹配行首和关键内容，在行首加 #)
-          sed -i 's|^ *set_offroad_alert("Offroad_UnofficialHardware",.*|#&|' system/athena/registration.py
+          #    因为替换内容是 '#&', 如果使用 '#' 作为分隔符, 需要在替换内容中转义 '#' 为 '\#'
+          sed -i 's#^ *set_offroad_alert("Offroad_UnofficialHardware",.*#\#&#' system/athena/registration.py
 
           # 修改 launch_openpilot.sh
           # 在第二行 (即 #!/bin/bash 之后) 插入环境变量导出
-          # 使用 sed 的 'a\' (append) 命令
+          # 这个命令使用 '/' 分隔符和 'a' 命令，没有冲突，保持不变
           sed -i '/^#!\/bin\/bash/a \
-          export API_HOST=https://api.konik.ai\
-          export ATHENA_HOST=wss://athena.konik.ai\
-          export MAPS_HOST=https://api.konik.ai/maps
-          ' launch_openpilot.sh
+export API_HOST=https://api.konik.ai\
+export ATHENA_HOST=wss://athena.konik.ai\
+export MAPS_HOST=https://api.konik.ai/maps
+' launch_openpilot.sh
 
           echo "Modifications applied."
           echo "--- registration.py diff ---"
+          # 使用 git status 和 git diff 检查更改更可靠
+          git status --porcelain system/athena/registration.py
           git diff system/athena/registration.py || echo "No changes detected in registration.py or file not found."
           echo "--- launch_openpilot.sh diff ---"
+          git status --porcelain launch_openpilot.sh
           git diff launch_openpilot.sh || echo "No changes detected in launch_openpilot.sh or file not found."
+
       # 3. 将获取到的 sunnypilot/tn-prebuilt 分支强制推送到你的仓库的 tn-prebuilt 分支
       #    - git push: 推送到 origin (即你的仓库)
       #    - <source>:<destination>: 将远程获取的分支推送到你的仓库的目标分支
