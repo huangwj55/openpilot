@@ -1,81 +1,136 @@
 # 文件名: .github/workflows/sync-sunnypilot-tn-prebuilt.yml
-# (建议放在你的 openpilot 仓库的 .github/workflows/ 目录下)
+# YAML - 使用 2 空格缩进，不要使用 Tab
 
-name: Sync sunnypilot tn-prebuilt (using GITHUB_TOKEN) # 名称中注明使用的令牌类型
+name: Sync sunnypilot tn-prebuilt with modifications (using GITHUB_TOKEN)
 
+# 0 空格缩进
 on:
+  # 2 空格缩进
   schedule:
-    - cron: '0 10 * * *'  # 每天 UTC 10 点运行 (北京时间下午 6 点)
-  workflow_dispatch:  # 允许在 GitHub Actions 页面手动触发
+    # 4 空格缩进 (列表项)
+    - cron: '0 10 * * *'
+  # 2 空格缩进
+  workflow_dispatch:
 
+# 0 空格缩进
 jobs:
+  # 2 空格缩进
   sync:
-    runs-on: ubuntu-latest # 使用最新的 Ubuntu 运行环境
-
+    # 4 空格缩进
+    runs-on: ubuntu-latest
+    # 4 空格缩进
     steps:
-      # 1. Checkout 你的目标仓库 (即运行此 Action 的仓库)
-      #    - 使用 actions/checkout@v4
-      #    - fetch-depth: 0 获取所有历史记录
-      #    - token: 使用默认的 GITHUB_TOKEN 进行认证，以便后续推送到本仓库
-      - name: Checkout target repository (your repo)
+
+      # 6 空格缩进 (步骤列表项)
+      - name: Checkout target repository (your repo baseline)
+        # 8 空格缩进
         uses: actions/checkout@v4
+        # 8 空格缩进
         with:
-          #fetch-depth: 0 # 获取完整历史，以便顺利强制推送
-          token: ${{ secrets.GITHUB_TOKEN }} # 使用 GitHub Actions 自动提供的令牌
+          # 10 空格缩进
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      # 2. 添加 sunnypilot 仓库作为远程源 (remote) 并仅获取 tn-prebuilt 分支
-      #    - remote add: 添加一个名为 'sunnypilot_source' 的远程仓库地址
-      #    - fetch: 从 'sunnypilot_source' 获取 'tn-prebuilt' 分支
-      #    - --depth=1: 只获取该分支最新的 commit，极大加快 fetch 速度
-      #    - --no-tags: 不获取 sunnypilot 仓库的 tags
+      # 6 空格缩进
       - name: Add sunnypilot remote and fetch tn-prebuilt branch
-        run: |
+        # 8 空格缩进
+        run: | # <-- 注意这里
+          # 10 空格缩进 (run: 下面的所有行)
           git remote add sunnypilot_source https://github.com/sunnypilot/sunnypilot.git
+          # 10 空格缩进
           echo "Fetching tn-prebuilt from sunnypilot..."
+          # 10 空格缩进
+          # 确保即使本地存在 tn-prebuilt 也获取最新远程数据
           git fetch sunnypilot_source tn-prebuilt --depth=1 --no-tags
+          # 10 空格缩进
           echo "Fetch completed."
-      - name: Apply custom modifications
-        run: |
-          echo "Applying modifications..."
 
-          # 修改 system/athena/registration.py
-          # 使用 '#' 作为 sed 分隔符，因为原始模式包含 '|'
-          # 1. 修改 imei1 (精确匹配，包括前导空格)
+      # 6 空格缩进 (新增的关键步骤：切换工作区)
+      - name: Checkout the fetched tn-prebuilt branch locally
+        # 8 空格缩进
+        run: | # <-- 注意这里
+          # 10 空格缩进 (run: 下面的所有行)
+          echo "Checking out fetched branch into working directory..."
+          # 10 空格缩进
+          # -B 会创建新分支或重置同名分支到指定 commit
+          git checkout -B tn-prebuilt refs/remotes/sunnypilot_source/tn-prebuilt
+          # 10 空格缩进
+          echo "Working directory now contains tn-prebuilt content."
+          # 10 空格缩进
+          # git clean -fdx # 可选：清理未跟踪的文件，防止干扰
+
+      # 6 空格缩进 (现在修改的是正确的文件)
+      - name: Apply custom modifications using sed
+        # 8 空格缩进
+        run: | # <-- 注意这里
+          # 10 空格缩进 (run: 下面的所有行)
+          echo "Applying modifications to checked-out files..."
+
+          # 10 空格缩进 (修改 system/athena/registration.py)
+          # 使用 '#' 作为 sed 分隔符
+          # 1. 修改 imei1
           sed -i "s#^    imei1: str | None = None$#    imei1='865420071781912'#g" system/athena/registration.py
-          # 2. 修改 imei2 (精确匹配，包括前导空格)
+          # 2. 修改 imei2
           sed -i "s#^    imei2: str | None = None$#    imei2='865420071781904'#g" system/athena/registration.py
-          # 3. 注释掉 set_offroad_alert 行 (匹配行首和关键内容，在行首加 #)
-          #    因为替换内容是 '#&', 如果使用 '#' 作为分隔符, 需要在替换内容中转义 '#' 为 '\#'
+          # 3. 注释掉 set_offroad_alert 行 (替换内容中的 '#' 需转义)
           sed -i 's#^ *set_offroad_alert("Offroad_UnofficialHardware",.*#\#&#' system/athena/registration.py
+          echo "registration.py modification attempt finished."
 
-          # 修改 launch_openpilot.sh
+          # 10 空格缩进 (修改 launch_openpilot.sh)
           # 在第二行 (即 #!/bin/bash 之后) 插入环境变量导出
-          # 这个命令使用 '/' 分隔符和 'a' 命令，没有冲突，保持不变
           sed -i '/^#!\/bin\/bash/a \
           export API_HOST=https://api.konik.ai\
           export ATHENA_HOST=wss://athena.konik.ai\
           export MAPS_HOST=https://api.konik.ai/maps
           ' launch_openpilot.sh
+          echo "launch_openpilot.sh modification attempt finished."
 
-          echo "Modifications applied."
-          echo "--- registration.py diff ---"
-          # 使用 git status 和 git diff 检查更改更可靠
+          # 10 空格缩进 (检查修改结果)
+          echo "Modifications applied. Checking diffs..."
+          echo "--- registration.py status & diff ---"
           git status --porcelain system/athena/registration.py
           git diff system/athena/registration.py || echo "No changes detected in registration.py or file not found."
-          echo "--- launch_openpilot.sh diff ---"
+          echo "--- launch_openpilot.sh status & diff ---"
           git status --porcelain launch_openpilot.sh
           git diff launch_openpilot.sh || echo "No changes detected in launch_openpilot.sh or file not found."
 
-      # 3. 将获取到的 sunnypilot/tn-prebuilt 分支强制推送到你的仓库的 tn-prebuilt 分支
-      #    - git push: 推送到 origin (即你的仓库)
-      #    - <source>:<destination>: 将远程获取的分支推送到你的仓库的目标分支
-      #    - --force: 强制推送，覆盖目标分支历史
-      - name: Force push tn-prebuilt to your repository
-        run: |
-          echo "Pushing fetched tn-prebuilt to origin/tn-prebuilt..."
-          # 配置 git 用户信息，对于使用 GITHUB_TOKEN 推送有时是必要的
+      # 6 空格缩进 (新增的关键步骤：提交修改)
+      - name: Commit the changes
+        # 8 空格缩进
+        run: | # <-- 注意这里
+          # 10 空格缩进 (run: 下面的所有行)
           git config --global user.name 'github-actions[bot]'
+          # 10 空格缩进
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          # 直接将 fetch 下来的远程分支引用推送到你的 origin 对应的分支名
-          git push origin refs/remotes/sunnypilot_source/tn-prebuilt:refs/heads/tn-prebuilt --force
+
+          # 10 空格缩进 (检查是否有更改)
+          if git diff --quiet && git diff --staged --quiet; then
+            # 12 空格缩进
+            echo "No changes detected by sed commands or files missing. Nothing to commit."
+          else
+            # 12 空格缩进
+            echo "Staging and committing changes..."
+            # 12 空格缩进 (显式添加可能被修改的文件)
+            git add system/athena/registration.py launch_openpilot.sh
+            # 12 空格缩进 (再次检查暂存区)
+            if git diff --staged --quiet; then
+              # 14 空格缩进
+              echo "Files were staged but content matches HEAD. Nothing to commit."
+            else
+              # 14 空格缩进
+              git commit -m "Apply custom modifications after syncing from sunnypilot/tn-prebuilt"
+              # 14 空格缩进
+              echo "Changes committed."
+            fi
+          fi
+
+      # 6 空格缩进 (修正推送目标：推送本地修改后的分支)
+      - name: Force push modified tn-prebuilt to your repository
+        # 8 空格缩进
+        run: | # <-- 注意这里
+          # 10 空格缩进 (run: 下面的所有行)
+          echo "Pushing modified local tn-prebuilt to origin/tn-prebuilt..."
+          # 10 空格缩进
+          # 推送本地 tn-prebuilt 分支到 origin 的 tn-prebuilt 分支
+          git push origin tn-prebuilt --force
+          # 10 空格缩进
           echo "Push completed."
