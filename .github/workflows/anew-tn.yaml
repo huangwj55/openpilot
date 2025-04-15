@@ -1,7 +1,7 @@
 # 文件名: .github/workflows/sync-tn-prebuilt.yaml
 # YAML - 严格使用 2 空格缩进，无 Tab
 
-name: AAA Sync sunnypilot tn-prebuilt
+name: AAA Sync sunnypilot tn
 on:
   schedule:
     - cron: '0 10 * * *'
@@ -31,7 +31,7 @@ jobs:
       - name: Add sunnypilot remote and fetch tn-prebuilt branch
         run: |
           git remote add sunnypilot_source https://github.com/sunnypilot/sunnypilot.git
-          echo "Fetching tn-prebuilt from sunnypilot..."
+          echo "Fetching tn from sunnypilot..."
           git fetch sunnypilot_source tn --depth=1 --no-tags
           echo "Fetch completed."
 
