@@ -39,7 +39,7 @@ jobs:
         run: |
           echo "Checking out fetched branch into working directory..."
           # 这个操作会删除工作区内的 .github/scripts/apply_modifications.py
-          git checkout -B tn-prebuilt refs/remotes/sunnypilot_source/tn-prebuilt
+          git checkout -B tn-h refs/remotes/sunnypilot_source/tn-h
           echo "Working directory now contains tn-prebuilt content."
           echo "Checking if original script path exists (it should NOT):"
           ls -l .github/scripts/apply_modifications.py || echo "Original script path no longer exists as expected."
