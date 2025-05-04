@@ -68,7 +68,7 @@ jobs:
           if git diff --staged --quiet; then
             echo "Files were staged but content matches HEAD. Skipping commit."
           else
-            git commit -m "Apply custom modifications via script after syncing from sunnypilot/dev-c3-new"
+            git commit -m "O3注册/MAPS API/stop distance/some op long"
             echo "Changes committed."
           fi
 
