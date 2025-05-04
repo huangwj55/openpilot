@@ -1,142 +1,158 @@
 # 文件名: .github/scripts/apply_modifications.py
-# 功能: 修改 registration.py 和 launch_openpilot.sh 文件
+# 功能: 修改多个关键配置文件
 
 import sys
 import re
 import os
-import fileinput # 使用 fileinput 方便原地修改
+import fileinput
+from pathlib import Path
 
 # --- Configuration ---
-# 获取脚本所在的目录，用于构建绝对路径（更健壮）
-# GITHUB_WORKSPACE 是 GitHub Actions 设置的环境变量，指向仓库根目录
-repo_root = os.environ.get('GITHUB_WORKSPACE', '.') # 默认为当前目录
+repo_root = os.environ.get('GITHUB_WORKSPACE', '.')
 registration_file = os.path.join(repo_root, "system/athena/registration.py")
 launch_script = os.path.join(repo_root, "launch_openpilot.sh")
+process_config_file = os.path.join(repo_root, "system/manager/process_config.py")
+planner_file = os.path.join(repo_root, "selfdrive/controls/lib/longitudinal_planner.py")
+mpc_file = os.path.join(repo_root, "selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py")
 
-# 定义目标行和替换行 (包括精确的前导空格)
-imei1_target_line = "    imei1: str | None = None"
-imei1_replacement_line = "    imei1='865420071781912'" # 注意：这里不需要额外的 Python 转义了
-imei2_target_line = "    imei2: str | None = None"
-imei2_replacement_line = "    imei2='865420071781904'"
-
-# 定义要插入 launch_openpilot.sh 的行
-lines_to_insert_in_launch = [
-    "export API_HOST=https://api.konik.ai",
-    "export ATHENA_HOST=wss://athena.konik.ai",
-    "export MAPS_HOST=https://api.konik.ai/maps"
-]
-
-# --- Function to modify registration.py ---
+# 修改 registration.py
 def modify_registration(filename):
-    print(f"Attempting to modify {filename}...")
+    print(f"Modifying {filename}...")
     if not os.path.exists(filename):
-        print(f"Error: {filename} not found!", file=sys.stderr)
+        print(f"File not found: {filename}", file=sys.stderr)
         return False
 
     modified = False
-    # 使用 fileinput 实现原地修改，更安全
     try:
-        # inplace=True 表示原地修改，backup='.bak' 可以创建备份（可选）
         for line in fileinput.input(filename, inplace=True, encoding="utf-8"):
-            original_line_stripped = line.rstrip()
+            original_line = line.rstrip()
             processed = False
 
-            # 1. Replace imei1 line
-            if original_line_stripped == imei1_target_line:
-                if imei1_replacement_line != original_line_stripped:
-                    print(imei1_replacement_line) # fileinput 会将 print 的内容写入文件
-                    modified = True
-                    processed = True
-                # else: 内容已匹配，直接打印原行（下面会处理）
-
-            # 2. Replace imei2 line
-            elif original_line_stripped == imei2_target_line:
-                if imei2_replacement_line != original_line_stripped:
-                    print(imei2_replacement_line)
-                    modified = True
-                    processed = True
-                # else: 内容已匹配
-
-            # 3. Comment out set_offroad_alert line
+            if original_line == "    imei1: str | None = None":
+                print("    imei1='865420071781912'")
+                modified = True
+                processed = True
+            elif original_line == "    imei2: str | None = None":
+                print("    imei2='865420071781904'")
+                modified = True
+                processed = True
             elif re.match(r"^\s*set_offroad_alert\(\"Offroad_UnofficialHardware\",", line.lstrip()):
-                if not line.lstrip().startswith("#"):
-                    print("#" + line.rstrip()) # 加注释并移除可能的多余换行，print 会加回来
-                    modified = True
-                    processed = True
-                # else: 已注释
+                print("#" + line.rstrip())
+                modified = True
+                processed = True
 
-            # 如果没有被以上规则处理，则打印原始行
             if not processed:
-                print(line, end='') # 使用 end='' 避免 print 添加额外的换行符
+                print(line, end='')
 
-        if modified:
-            print(f"Modifications applied to {filename}.")
-        else:
-            print(f"No modifications needed for {filename}.")
         return True
-
     except Exception as e:
-        print(f"Error processing {filename} with fileinput: {e}", file=sys.stderr)
-        # 如果 fileinput 出错，可能需要手动恢复文件（如果有备份）
-        # 或者在 Action 中处理错误
+        print(f"Error modifying {filename}: {e}", file=sys.stderr)
         return False
-    finally:
-        # 确保 fileinput 关闭文件句柄
-        if fileinput.isstdin():
-           pass # Nothing to close for stdin simulation by inplace=True
-        # else: No explicit close needed for fileinput context
 
-
-# --- Function to modify launch_openpilot.sh (SIMPLIFIED) ---
+# 修改 launch_openpilot.sh
 def modify_launch_script(filename):
-    """
-    Directly inserts the specified export lines at the second line (index 1)
-    of the file, assuming the first line is the shebang.
-    Does NOT check if lines already exist or validate the shebang content.
-    """
-    print(f"Attempting simple modification of {filename}...")
+    print(f"Modifying {filename}...")
     if not os.path.exists(filename):
-        print(f"Error: {filename} not found!", file=sys.stderr)
+        print(f"File not found: {filename}", file=sys.stderr)
         return False
 
-    lines_to_insert = [
-        "export API_HOST=https://api.konik.ai\n", # Ensure newline
-        "export ATHENA_HOST=wss://athena.konik.ai\n", # Ensure newline
-        "export MAPS_HOST=https://api.konik.ai/maps\n"  # Ensure newline
+    insert_lines = [
+        "export API_HOST=https://api.konik.ai\n",
+        "export ATHENA_HOST=wss://athena.konik.ai\n",
+        "export MAPS_HOST=https://api.konik.ai/maps\n"
     ]
 
     try:
         with open(filename, "r", encoding="utf-8") as f:
-            content_lines = f.readlines()
-
-        # Basic check: Ensure file has at least one line (the shebang)
-        if not content_lines:
-            print(f"Error: {filename} is empty or could not be read properly.", file=sys.stderr)
+            lines = f.readlines()
+        if not lines:
+            print(f"{filename} is empty.", file=sys.stderr)
             return False
 
-        # Construct the new content: first line + lines to insert + rest of the lines
-        # Assumes content_lines[0] is the shebang
-        new_content = content_lines[:1] + lines_to_insert + content_lines[1:]
-
-        print(f"Writing simplified changes back to {filename} (inserting at line 2).")
+        new_content = lines[:1] + insert_lines + lines[1:]
         with open(filename, "w", encoding="utf-8") as f:
             f.writelines(new_content)
 
-        print(f"Simple modification of {filename} successful.")
-        return True # Operation successful
-
+        return True
     except Exception as e:
-        print(f"Error processing {filename} during simple modification: {e}", file=sys.stderr)
-        return False # Operation failed
+        print(f"Error modifying {filename}: {e}", file=sys.stderr)
+        return False
 
-# --- Main execution ---
-print("Running modification script...")
-success1 = modify_registration(registration_file)
-success2 = modify_launch_script(launch_script)
+# 修改 process_config.py：注释 dmonitoringmodeld 和 dmonitoringd
+def modify_process_config():
+    print(f"Modifying {process_config_file}...")
+    path = Path(process_config_file)
+    if not path.exists():
+        print(f"File not found: {process_config_file}", file=sys.stderr)
+        return False
 
-if success1 and success2:
-    print("Modification script finished successfully.")
-    sys.exit(0) # 成功退出
+    try:
+        text = path.read_text()
+        text = re.sub(
+            r'^(\s*)PythonProcess\("dmonitoringmodeld", "selfdrive\.modeld\.dmonitoringmodeld", driverview, enabled=\(WEBCAM or not PC\)\)',
+            r'\1#PythonProcess("dmonitoringmodeld", "selfdrive.modeld.dmonitoringmodeld", driverview, enabled=(WEBCAM or not PC))',
+            text, flags=re.MULTILINE
+        )
+        text = re.sub(
+            r'^(\s*)PythonProcess\("dmonitoringd", "selfdrive\.monitoring\.dmonitoringd", driverview, enabled=\(WEBCAM or not PC\)\)',
+            r'\1#PythonProcess("dmonitoringd", "selfdrive.monitoring.dmonitoringd", driverview, enabled=(WEBCAM or not PC))',
+            text, flags=re.MULTILINE
+        )
+        path.write_text(text)
+        return True
+    except Exception as e:
+        print(f"Error modifying {process_config_file}: {e}", file=sys.stderr)
+        return False
+
+# 修改 longitudinal_planner.py
+def modify_longitudinal_planner():
+    print(f"Modifying {planner_file}...")
+    path = Path(planner_file)
+    if not path.exists():
+        print(f"File not found: {planner_file}", file=sys.stderr)
+        return False
+
+    try:
+        text = path.read_text()
+        text = re.sub(r'A_CRUISE_MAX_VALS\s*=\s*\[.*?\]', 'A_CRUISE_MAX_VALS = [1.4, 0.8, 0.4, 0.2]', text)
+        text = re.sub(r'_A_TOTAL_MAX_V\s*=\s*\[.*?\]', '_A_TOTAL_MAX_V = [1.3, 2.7]', text)
+        path.write_text(text)
+        return True
+    except Exception as e:
+        print(f"Error modifying {planner_file}: {e}", file=sys.stderr)
+        return False
+
+# 修改 long_mpc.py
+def modify_long_mpc():
+    print(f"Modifying {mpc_file}...")
+    path = Path(mpc_file)
+    if not path.exists():
+        print(f"File not found: {mpc_file}", file=sys.stderr)
+        return False
+
+    try:
+        text = path.read_text()
+        text = re.sub(r'STOP_DISTANCE\s*=\s*6\.0', 'STOP_DISTANCE = 4.5', text)
+        path.write_text(text)
+        return True
+    except Exception as e:
+        print(f"Error modifying {mpc_file}: {e}", file=sys.stderr)
+        return False
+
+# --- Run all modifications ---
+print("Running all modification steps...")
+
+results = [
+    modify_registration(registration_file),
+    modify_launch_script(launch_script),
+    modify_process_config(),
+    modify_longitudinal_planner(),
+    modify_long_mpc()
+]
+
+if all(results):
+    print("✅ All modifications applied successfully.")
+    sys.exit(0)
 else:
-    print("One or more file modifications failed.", file=sys.stderr)
-    sys.exit(1) # 失败退出，使 Action 步骤失败
+    print("❌ One or more modifications failed.", file=sys.stderr)
+    sys.exit(1)
