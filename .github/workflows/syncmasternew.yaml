@@ -79,7 +79,10 @@ jobs:
         run: echo "No file changes detected by Python script. Nothing to commit."
 
       - name: Force push modified master-new to your repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Pushing local master-new to origin/master-new..."
+          echo "Pushing local master-new to origin/master-new using token..."
+          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/huangwj55/openpilot.git
           git push origin master-new --force
           echo "Push completed."
