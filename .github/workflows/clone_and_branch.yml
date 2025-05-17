@@ -1,0 +1,33 @@
+name: Clone and Create fish98 Branch
+
+on:
+  workflow_dispatch:  # 手动触发
+
+jobs:
+  clone-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout empty repo
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ github.repository }}
+        ref: tn  # 或 master，根据你的默认分支名而定
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Set up Git
+      run: |
+        git config --global user.name "${{ github.actor }}"
+        git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+
+    - name: Clone source branch
+      run: |
+        git clone --single-branch --branch 098dd https://github.com/fishsp/openpilot.git fish_source
+        cd fish_source
+        git checkout -b fish98
+
+    - name: Push to your repo
+      run: |
+        cd fish_source
+        git remote set-url origin https://x-access-token:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/${{ github.repository }}.git
+        git push origin fish98
