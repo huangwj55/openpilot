@@ -1,37 +1,87 @@
-# 文件名: .github/workflows/sync-tn.yaml
+# 文件名: .github/workflows/sync-tn-to-tm.yaml
+# YAML - 严格使用 2 空格缩进，无 Tab
 
-name: Sync sunnypilot/tn → hwj55/openpilot:tn
+name: AAA Sync sunnypilot tn-to-tm
 
 on:
-  schedule:
-    - cron: '0 10 * * *'  # 每天 UTC 时间 10:00 自动运行
-  workflow_dispatch:        # 支持手动触发
+  workflow_dispatch:
 
 jobs:
-  clone-and-push:
+  sync:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout empty repo
-      uses: actions/checkout@v4
-      with:
-        repository: ${{ github.repository }}
-        ref: master  # 或 master，根据你的默认分支名而定
-        token: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Set up Git
-      run: |
-        git config --global user.name "${{ github.actor }}"
-        git config --global user.email "${{ github.actor }}@users.noreply.github.com"
+      - name: Checkout target repository (contains script)
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: tn  # 先签出已有的 tn 分支，确保能访问脚本
 
-    - name: Clone source branch
-      run: |
-        git clone --single-branch --branch tn https://github.com/sunnypilot/sunnypilot.git fish_source
-        cd fish_source
-        git checkout -b tn
+      - name: Prepare modification script
+        run: |
+          echo "Copying modification script to temporary location..."
+          mkdir -p /tmp/workflow_scripts
+          cp .github/scripts/apply_modifications.py /tmp/workflow_scripts/apply_modifications.py
+          echo "Script copied to /tmp/workflow_scripts/"
+          ls -l /tmp/workflow_scripts/
 
-    - name: Push to your repo
-      run: |
-        cd fish_source
-        git remote set-url origin https://x-access-token:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/${{ github.repository }}.git
-        git push origin tm
+      - name: Add sunnypilot remote and fetch tn branch
+        run: |
+          git remote add sunnypilot_source https://github.com/sunnypilot/sunnypilot.git
+          echo "Fetching tn from sunnypilot..."
+          git fetch sunnypilot_source tn --depth=1 --no-tags
+          echo "Fetch completed."
+
+      - name: Checkout the fetched tn branch locally as tm (Overwrites workspace)
+        run: |
+          echo "Checking out tn as local branch tm..."
+          git checkout -B tm refs/remotes/sunnypilot_source/tn
+          echo "Working directory now contains tn content under local branch tm."
+
+      - name: Apply custom modifications using script from temp location
+        run: |
+          echo "Running Python script from temporary location..."
+          ls -l /tmp/workflow_scripts/apply_modifications.py
+          python /tmp/workflow_scripts/apply_modifications.py
+          echo "Python script execution finished."
+
+      - name: Check file status after modification script
+        id: check_status
+        run: |
+          echo "Checking git status for modified files..."
+          git status --porcelain system/athena/registration.py launch_openpilot.sh
+          if [[ -n $(git status --porcelain system/athena/registration.py launch_openpilot.sh) ]]; then
+            echo "changes_detected=true" >> $GITHUB_OUTPUT
+          else
+            echo "changes_detected=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit the changes
+        if: steps.check_status.outputs.changes_detected == 'true'
+        run: |
+          echo "Changes detected. Staging and committing..."
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add .
+          if git diff --staged --quiet; then
+            echo "Files were staged but content matches HEAD. Skipping commit."
+          else
+            git commit -m "Apply custom modifications based on tn branch"
+            echo "Changes committed."
+          fi
+
+      - name: No changes to commit
+        if: steps.check_status.outputs.changes_detected == 'false'
+        run: echo "No file changes detected by Python script. Nothing to commit."
+
+      - name: Push tm branch to origin
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Overriding any global Git URL rewrite settings..."
+          git config --global --unset-all url."git@github.com:".insteadOf || true
+          git config --global --unset-all url."ssh://git@github.com/".insteadOf || true
+          git remote remove origin || true
+          git remote add origin https://x-access-token:${GH_TOKEN}@github.com/huangwj55/openpilot.git
+          git remote -v
+          git push origin tm --force
