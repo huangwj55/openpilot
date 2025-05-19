@@ -26,5 +26,5 @@ jobs:
       run: |
         cd source_repo
         git remote rename origin upstream
-        git remote add target https://x-access-token:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/hwj55/openpilot.git
+        git remote add target https://x-access-token:${{ secrets.HWJ55_TOKEN }}@github.com/hwj55/openpilot.git
         git push -f target tn
