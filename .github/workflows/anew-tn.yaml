@@ -78,10 +78,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Overriding any global Git URL rewrite settings..."
-          git config --global --unset-all url."git@github.com:".insteadOf || true
-          git config --global --unset-all url."ssh://git@github.com/".insteadOf || true
+          echo "Setting Git config for HTTPS-only push..."
+          git config --global url."https://".insteadOf "git@"
+          git config --global url."https://".insteadOf "ssh://git@"
           git remote remove origin || true
           git remote add origin https://x-access-token:${GH_TOKEN}@github.com/huangwj55/openpilot.git
           git remote -v
+          git config --global push.default current
+          echo "Pushing tm branch via HTTPS..."
           git push origin tm --force
