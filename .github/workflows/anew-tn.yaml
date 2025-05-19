@@ -8,72 +8,30 @@ on:
   workflow_dispatch:        # 支持手动触发
 
 jobs:
-  sync-and-push:
+  clone-and-push:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout current repo to get modification script
+    - name: Checkout empty repo
       uses: actions/checkout@v4
       with:
+        repository: ${{ github.repository }}
+        ref: tn  # 或 master，根据你的默认分支名而定
         token: ${{ secrets.GITHUB_TOKEN }}
-        ref: tn
 
-    - name: Prepare modification script
+    - name: Set up Git
       run: |
-        echo "Copying modification script to temporary location..."
-        mkdir -p /tmp/workflow_scripts
-        cp .github/scripts/apply_modifications.py /tmp/workflow_scripts/apply_modifications.py
-        echo "Script copied to /tmp/workflow_scripts/"
-        ls -l /tmp/workflow_scripts/
+        git config --global user.name "${{ github.actor }}"
+        git config --global user.email "${{ github.actor }}@users.noreply.github.com"
 
-    - name: Clone sunnypilot tn branch
+    - name: Clone source branch
       run: |
-        git clone --single-branch --branch tn https://github.com/sunnypilot/sunnypilot.git sunnypilot_source
-        cd sunnypilot_source
-        git status
+        git clone --single-branch --branch tn https://github.com/sunnypilot/sunnypilot.git fish_source
+        cd fish_source
+        git checkout -b tn
 
-    - name: Apply custom modifications using script from temp location
+    - name: Push to your repo
       run: |
-        echo "Running Python script from temporary location..."
-        ls -l /tmp/workflow_scripts/apply_modifications.py
-        python3 /tmp/workflow_scripts/apply_modifications.py
-        echo "Python script execution finished."
-      working-directory: sunnypilot_source
-
-    - name: Check file status after modification script
-      id: check_status
-      run: |
-        echo "Checking git status for modified files..."
-        cd sunnypilot_source
-        git status --porcelain system/athena/registration.py launch_openpilot.sh
-        if [[ -n $(git status --porcelain system/athena/registration.py launch_openpilot.sh) ]]; then
-          echo "changes_detected=true" >> $GITHUB_OUTPUT
-        else
-          echo "changes_detected=false" >> $GITHUB_OUTPUT
-        fi
-
-    - name: Commit the changes
-      if: steps.check_status.outputs.changes_detected == 'true'
-      run: |
-        echo "Changes detected. Staging and committing..."
-        cd sunnypilot_source
-        git config --global user.name 'github-actions[bot]'
-        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-        git add .
-        if git diff --staged --quiet; then
-          echo "Files were staged but content matches HEAD. Skipping commit."
-        else
-          git commit -m "O3注册/MAPS API/stop distance/some op long"
-          echo "Changes committed."
-        fi
-
-    - name: No changes to commit
-      if: steps.check_status.outputs.changes_detected == 'false'
-      run: echo "No file changes detected by Python script. Nothing to commit."
-
-    - name: Push updated tn branch to your repo
-      run: |
-        cd sunnypilot_source
+        cd fish_source
         git remote set-url origin https://x-access-token:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/${{ github.repository }}.git
-        git push origin tn --force
-        echo "Push completed."
+        git push origin tn
