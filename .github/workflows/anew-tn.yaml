@@ -78,6 +78,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          git lfs install --skip-smudge
+          git config --global filter.lfs.smudge "git-lfs smudge --skip -- %f"
           echo "Setting Git config for HTTPS-only push..."
           git config --global url."https://".insteadOf "git@"
           git config --global url."https://".insteadOf "ssh://git@"
