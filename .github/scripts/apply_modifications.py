@@ -75,20 +75,7 @@ def modify_process_config(filename):
             print(line, end='')
     return modified
 
-# ✅ 修改 longitudinal_planner.py 中 A_CRUISE_MAX_VALS 和 _A_TOTAL_MAX_V
-def modify_longitudinal_planner(filename):
-    print(f"Modifying {filename}...")
-    modified = False
-    for line in fileinput.input(filename, inplace=True, encoding="utf-8"):
-        if 'A_CRUISE_MAX_VALS' in line:
-            print("A_CRUISE_MAX_VALS = [1.4, 0.8, 0.4, 0.2]\n", end='')
-            modified = True
-        elif '_A_TOTAL_MAX_V' in line:
-            print("_A_TOTAL_MAX_V = [1.3, 2.7]\n", end='')
-            modified = True
-        else:
-            print(line, end='')
-    return modified
+
 
 # ✅ 修改 long_mpc.py 中 STOP_DISTANCE
 def modify_long_mpc(filename):
@@ -109,7 +96,6 @@ results = [
     modify_registration(registration_file),
     modify_launch_script(launch_script),
     modify_process_config(process_config),
-    modify_longitudinal_planner(longitudinal_planner),
     modify_long_mpc(long_mpc)
 ]
 
