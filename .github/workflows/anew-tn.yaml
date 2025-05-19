@@ -12,19 +12,26 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - name: Checkout empty repo
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ github.repository }}
+        ref: tn  # 或 master，根据你的默认分支名而定
+        token: ${{ secrets.GITHUB_TOKEN }}
+
     - name: Set up Git
       run: |
         git config --global user.name "${{ github.actor }}"
         git config --global user.email "${{ github.actor }}@users.noreply.github.com"
 
-    - name: Clone sunnypilot/tn branch
+    - name: Clone source branch
       run: |
-        git clone --single-branch --branch tn https://github.com/sunnypilot/openpilot.git source_repo
-        cd source_repo
+        git clone --single-branch --branch tn https://github.com/sunnypilot/sunnypilot.git fish_source
+        cd fish_source
+        git checkout -b tn
 
-    - name: Push to hwj55/openpilot tn branch
+    - name: Push to your repo
       run: |
-        cd source_repo
-        git remote rename origin upstream
-        git remote add target https://x-access-token:${{ secrets.HWJ55_TOKEN }}@github.com/hwj55/openpilot.git
-        git push -f target tn
+        cd fish_source
+        git remote set-url origin https://x-access-token:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/${{ github.repository }}.git
+        git push origin tm
