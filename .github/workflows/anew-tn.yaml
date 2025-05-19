@@ -30,7 +30,7 @@ jobs:
       run: |
         git clone --single-branch --branch tn https://github.com/sunnypilot/sunnypilot.git sunnypilot_source
         cd sunnypilot_source
-        git checkout -b tn
+        git status
 
     - name: Apply custom modifications using script from temp location
       run: |
