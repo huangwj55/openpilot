@@ -18,16 +18,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           ref: tn # 明确指定签出 tn 分支，确保拿到脚本
 
-      # 新增步骤：将脚本复制到临时目录
-      - name: Prepare modification script
-        run: |
-          echo "Copying modification script to temporary location..."
-          # 在 /tmp 下创建目录，这是 runner 环境中可用的临时空间
-          mkdir -p /tmp/workflow_scripts
-          cp .github/scripts/apply_modifications.py /tmp/workflow_scripts/apply_modifications.py
-          echo "Script copied to /tmp/workflow_scripts/"
-          ls -l /tmp/workflow_scripts/ # 验证复制成功
-
+   
       - name: Add sunnypilot remote and fetch tn-prebuilt branch
         run: |
           git remote add sunnypilot_source https://github.com/sunnypilot/sunnypilot.git
@@ -44,27 +35,7 @@ jobs:
           echo "Checking if original script path exists (it should NOT):"
           ls -l .github/scripts/apply_modifications.py || echo "Original script path no longer exists as expected."
 
-      # 修改：从临时目录运行脚本
-      - name: Apply custom modifications using script from temp location
-        run: |
-          echo "Running Python script from temporary location..."
-          ls -l /tmp/workflow_scripts/apply_modifications.py # 验证脚本在临时目录中
-          # 从 /tmp 中的副本运行脚本
-          python /tmp/workflow_scripts/apply_modifications.py
-          echo "Python script execution finished."
-
-      # 后续步骤保持不变
-      - name: Check file status after modification script
-        id: check_status
-        run: |
-          echo "Checking git status for modified files..."
-          git status --porcelain system/athena/registration.py launch_openpilot.sh
-          if [[ -n $(git status --porcelain system/athena/registration.py launch_openpilot.sh) ]]; then
-            echo "changes_detected=true" >> $GITHUB_OUTPUT
-          else
-            echo "changes_detected=false" >> $GITHUB_OUTPUT
-          fi
-
+    
       - name: Commit the changes
         if: steps.check_status.outputs.changes_detected == 'true'
         run: |
