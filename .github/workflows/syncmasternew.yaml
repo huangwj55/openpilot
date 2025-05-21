@@ -76,14 +76,8 @@ jobs:
         if: steps.check_status.outputs.changes_detected == 'false'
         run: echo "No file changes detected by Python script. Nothing to commit."
 
-      - name: Disable Git URL rewriting and push using token
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Force push modified tn-prebuilt to your repository
         run: |
-          echo "Overriding any global Git URL rewrite settings..."
-          git config --global --unset-all url."git@github.com:".insteadOf || true
-          git config --global --unset-all url."ssh://git@github.com/".insteadOf || true
-          git remote remove origin || true
-          git remote add origin https://x-access-token:${GH_TOKEN}@github.com/huangwj55/openpilot.git
-          git remote -v
-          git push origin master-new --force
+          echo "Pushing local tn-prebuilt to origin/tn-prebuilt..."
+          git push origin tn-prebuilt --force
+          echo "Push completed."
