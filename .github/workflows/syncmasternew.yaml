@@ -79,5 +79,5 @@ jobs:
       - name: Force push modified tn-prebuilt to your repository
         run: |
           echo "Pushing local tn-prebuilt to origin/tn-prebuilt..."
-          git push origin tn-prebuilt --force
+          git push origin master-new --force
           echo "Push completed."
