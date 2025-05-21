@@ -18,7 +18,14 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           ref: tn # 明确指定签出 tn 分支，确保拿到脚本
 
-   
+      - name: Prepare modification script
+        run: |
+          echo "Copying modification script to temporary location..."
+          mkdir -p /tmp/workflow_scripts
+          cp .github/scripts/apply_modifications.py /tmp/workflow_scripts/apply_modifications.py
+          echo "Script copied to /tmp/workflow_scripts/"
+          ls -l /tmp/workflow_scripts/
+          
       - name: Add sunnypilot remote and fetch tn-prebuilt branch
         run: |
           git remote add sunnypilot_source https://github.com/sunnypilot/sunnypilot.git
@@ -35,14 +42,20 @@ jobs:
           echo "Checking if original script path exists (it should NOT):"
           ls -l .github/scripts/apply_modifications.py || echo "Original script path no longer exists as expected."
 
-    
+      - name: Apply custom modifications using script from temp location
+        run: |
+          echo "Running Python script from temporary location..."
+          ls -l /tmp/workflow_scripts/apply_modifications.py
+          python /tmp/workflow_scripts/apply_modifications.py
+          echo "Python script execution finished."
+
       - name: Commit the changes
         if: steps.check_status.outputs.changes_detected == 'true'
         run: |
           echo "Changes detected. Staging and committing..."
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add system/athena/registration.py launch_openpilot.sh
+          git add .
           if git diff --staged --quiet; then
              echo "Files were staged but content matches HEAD. Skipping commit."
           else
