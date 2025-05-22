@@ -1,21 +1,26 @@
+# 文件名: .github/workflows/sync-tn-to-tm.yaml
+# YAML - 严格使用 2 空格缩进，无 Tab
+
 name: AAA Sync sunnypilot tn to my tm
 on:
   schedule:
-    - cron: '0 10 * * *' # 每天中国标准时间下午6点 (UTC上午10点)
+    - cron: '0 10 * * *'
   workflow_dispatch:
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+    permissions: # 添加权限块
+      contents: write # 允许 GITHUB_TOKEN 写入仓库内容 (包括 push)
     steps:
-
+      # ... (Checkout target repository step) ...
       - name: Checkout target repository (contains script)
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          ref: tn # 明确指定签出您仓库的 tn 分支，以确保拿到脚本。
-                  # 如果脚本在 main/master 分支，请修改为对应的分支名。
+          token: ${{ secrets.GITHUB_TOKEN }} # checkout 会使用这个 token
+          ref: tn
 
+      # ... (Prepare modification script step) ...
       - name: Prepare modification script
         run: |
           echo "Copying modification script to temporary location..."
@@ -24,24 +29,24 @@ jobs:
           echo "Script copied to /tmp/workflow_scripts/"
           ls -l /tmp/workflow_scripts/
 
+      # ... (Add sunnypilot remote and fetch tn branch step) ...
       - name: Add sunnypilot remote and fetch tn branch
         run: |
           git remote add sunnypilot_source https://github.com/sunnypilot/sunnypilot.git
           echo "Fetching tn from sunnypilot_source..."
-          # 获取 sunnypilot/sunnypilot 仓库的 tn 分支
           git fetch sunnypilot_source tn --depth=1 --no-tags
           echo "Fetch completed."
 
+      # ... (Checkout the fetched tn branch locally step) ...
       - name: Checkout the fetched tn branch locally into a temporary branch (Overwrites workspace)
         run: |
           echo "Checking out fetched sunnypilot/tn branch into local temp-sync-branch..."
-          # 这个操作会删除工作区内的 .github/scripts/apply_modifications.py
-          # 我们将检出 sunnypilot 的 tn 分支内容到一个本地的临时分支，例如 temp-sync-branch
           git checkout -B temp-sync-branch refs/remotes/sunnypilot_source/tn
           echo "Working directory now contains sunnypilot/tn content on local temp-sync-branch."
           echo "Checking if original script path exists (it should NOT):"
           ls -l .github/scripts/apply_modifications.py || echo "Original script path no longer exists as expected."
 
+      # ... (Apply custom modifications step) ...
       - name: Apply custom modifications using script from temp location
         run: |
           echo "Running Python script from temporary location on temp-sync-branch..."
@@ -49,13 +54,13 @@ jobs:
           python /tmp/workflow_scripts/apply_modifications.py
           echo "Python script execution finished."
 
+      # ... (Commit the changes step - modified to include id and output) ...
       - name: Commit the changes to temp-sync-branch
-        id: commit_changes # 给这个步骤一个id，以便后续可以检查是否有提交
+        id: commit_changes
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add .
-          # 检查是否有实际的文件内容更改需要提交
           if git diff --staged --quiet; then
              echo "Files were staged but content matches HEAD of temp-sync-branch. Skipping commit."
              echo "changes_made=false" >> $GITHUB_OUTPUT
@@ -64,13 +69,21 @@ jobs:
              echo "Changes committed to temp-sync-branch."
              echo "changes_made=true" >> $GITHUB_OUTPUT
           fi
-
+      
+      # ... (Push step - modified as above) ...
       - name: Push modified temp-sync-branch to your repository's tm branch
-        # 仅当上一步实际执行了 commit 时才推送
         if: steps.commit_changes.outputs.changes_made == 'true'
         run: |
+          echo "Current git remotes before setting URL:"
+          git remote -v
+
+          echo "Configuring remote origin URL with GITHUB_TOKEN for push..."
+          git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          
+          echo "Updated git remotes:"
+          git remote -v
+
           echo "Pushing local temp-sync-branch to origin/tm..."
-          # 将本地的 temp-sync-branch 强制推送到您仓库 (origin) 的 tm 分支
           git push origin temp-sync-branch:tm --force
           echo "Push to origin/tm completed."
       
