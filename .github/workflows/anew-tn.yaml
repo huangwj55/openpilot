@@ -74,8 +74,14 @@ jobs:
         if: steps.check_status.outputs.changes_detected == 'false'
         run: echo "No file changes detected by Python script. Nothing to commit."
 
-      - name: Force push modified tn-prebuilt to your repository
+      - name: Push modified temp-sync-branch to your repository's tm branch
+        # 仅当上一步实际执行了 commit 时才推送
+        if: steps.commit_changes.outputs.changes_made == 'true'
         run: |
-          echo "Pushing local tn-prebuilt to origin/tn-prebuilt..."
-          git push origin temp-sync-branch:tm --force
+          echo "Pushing local temp-sync-branch to origin/tm..."
+          
+          # 直接在 push 命令中使用完整的 HTTPS URL 和 Token
+          # 这会绕过 'origin' 远程的任何潜在的错误配置或重定向规则
+          git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" temp-sync-branch:tm --force
+          
           echo "Push to origin/tm completed."
