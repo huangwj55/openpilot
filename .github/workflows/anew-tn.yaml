@@ -4,49 +4,55 @@
 name: AAA Sync sunnypilot tn to my tm
 on:
   schedule:
-    - cron: '0 10 * * *'
+    - cron: '0 10 * * *' # 每天中国标准时间下午6点 (UTC上午10点)
   workflow_dispatch:
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-    permissions: # 添加权限块
-      contents: write # 允许 GITHUB_TOKEN 写入仓库内容 (包括 push)
+    permissions:
+      contents: write # 确保 GITHUB_TOKEN 有写入权限
     steps:
-      # ... (Checkout target repository step) ...
-      - name: Checkout target repository (contains script)
+
+      - name: Checkout target repository (contains script, ensure LFS)
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }} # checkout 会使用这个 token
-          ref: tn
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: tn # 重要: 确保您仓库的 'tn' 分支 (或脚本所在分支) 存在且包含脚本
+                  # 如果脚本在 main/master, 请修改为对应的分支名
+          lfs: true # 如果您的仓库使用 Git LFS，请务必设置为 true
 
-      # ... (Prepare modification script step) ...
       - name: Prepare modification script
         run: |
           echo "Copying modification script to temporary location..."
           mkdir -p /tmp/workflow_scripts
+          # 确保这个路径是正确的
           cp .github/scripts/apply_modifications.py /tmp/workflow_scripts/apply_modifications.py
           echo "Script copied to /tmp/workflow_scripts/"
           ls -l /tmp/workflow_scripts/
 
-      # ... (Add sunnypilot remote and fetch tn branch step) ...
       - name: Add sunnypilot remote and fetch tn branch
         run: |
           git remote add sunnypilot_source https://github.com/sunnypilot/sunnypilot.git
           echo "Fetching tn from sunnypilot_source..."
-          git fetch sunnypilot_source tn --depth=1 --no-tags
+          # --no-recurse-submodules 如果不需要子模块可以加快速度
+          git fetch sunnypilot_source tn --depth=1 --no-tags --no-recurse-submodules
           echo "Fetch completed."
 
-      # ... (Checkout the fetched tn branch locally step) ...
-      - name: Checkout the fetched tn branch locally into a temporary branch (Overwrites workspace)
+      - name: Checkout the fetched tn branch locally into a temporary branch
         run: |
           echo "Checking out fetched sunnypilot/tn branch into local temp-sync-branch..."
           git checkout -B temp-sync-branch refs/remotes/sunnypilot_source/tn
           echo "Working directory now contains sunnypilot/tn content on local temp-sync-branch."
+          
+          # 如果 sunnypilot/tn 分支也使用了 LFS，并且您的修改脚本需要实际的 LFS 文件内容 (而不是指针),
+          # 您可能需要在这里执行 'git lfs pull'
+          # echo "Pulling LFS objects for temp-sync-branch if necessary..."
+          # git lfs pull
+
           echo "Checking if original script path exists (it should NOT):"
           ls -l .github/scripts/apply_modifications.py || echo "Original script path no longer exists as expected."
 
-      # ... (Apply custom modifications step) ...
       - name: Apply custom modifications using script from temp location
         run: |
           echo "Running Python script from temporary location on temp-sync-branch..."
@@ -54,7 +60,6 @@ jobs:
           python /tmp/workflow_scripts/apply_modifications.py
           echo "Python script execution finished."
 
-      # ... (Commit the changes step - modified to include id and output) ...
       - name: Commit the changes to temp-sync-branch
         id: commit_changes
         run: |
@@ -69,19 +74,48 @@ jobs:
              echo "Changes committed to temp-sync-branch."
              echo "changes_made=true" >> $GITHUB_OUTPUT
           fi
-      
-      - name: No changes to commit
-        if: steps.check_status.outputs.changes_detected == 'false'
-        run: echo "No file changes detected by Python script. Nothing to commit."
 
       - name: Push modified temp-sync-branch to your repository's tm branch
-        # 仅当上一步实际执行了 commit 时才推送
         if: steps.commit_changes.outputs.changes_made == 'true'
+        env:
+          GIT_TRACE: "1"
+          GIT_CURL_VERBOSE: "1"
+          GIT_LFS_TRACE_HTTP: "1" # 开启 LFS 的 HTTP 传输日志
+          GIT_TERMINAL_PROMPT: "0" # 禁止交互式提示
         run: |
-          echo "Pushing local temp-sync-branch to origin/tm..."
+          echo "--- Running 'git lfs env' before push to check LFS configuration ---"
+          git lfs env
+
+          echo "--- Content of .lfsconfig (if exists in current directory) ---"
+          cat .lfsconfig || echo ".lfsconfig not found in PWD"
           
-          # 直接在 push 命令中使用完整的 HTTPS URL 和 Token
-          # 这会绕过 'origin' 远程的任何潜在的错误配置或重定向规则
-          git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" temp-sync-branch:tm --force
+          echo "--- Content of .git/config before LFS URL modification ---"
+          cat .git/config
+
+          # 为 'origin' 远程显式配置 LFS URL 和 Git URL，都使用 HTTPS 和 Token
+          # 这有助于确保 LFS 和 Git 的推送部分都使用正确的协议和凭证
+          ORIGIN_PUSH_URL="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          LFS_PUSH_URL="${ORIGIN_PUSH_URL}/info/lfs" # LFS 端点通常是 .git/info/lfs
+
+          echo "Setting remote.origin.url to: $ORIGIN_PUSH_URL"
+          git config remote.origin.url "$ORIGIN_PUSH_URL"
+          
+          echo "Setting remote.origin.lfsurl to: $LFS_PUSH_URL"
+          git config remote.origin.lfsurl "$LFS_PUSH_URL"
+          
+          # 确保LFS知道如何验证 (actions/checkout 通常会处理这个, 但再次确认无妨)
+          # git config lfs."$LFS_PUSH_URL".access basic
+
+
+          echo "--- Content of .git/config AFTER LFS URL modification ---"
+          cat .git/config
+
+          echo "Pushing local temp-sync-branch to origin/tm (using 'origin' remote)..."
+          # 使用 'origin' 远程进行推送, 它现在应该有正确的 url 和 lfsurl 配置
+          git push origin temp-sync-branch:tm --force
           
           echo "Push to origin/tm completed."
+      
+      - name: No changes to push
+        if: steps.commit_changes.outputs.changes_made == 'false'
+        run: echo "No effective changes detected by Python script or sync. Nothing to push to tm."
