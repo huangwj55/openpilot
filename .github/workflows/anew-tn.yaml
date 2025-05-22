@@ -9,130 +9,138 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # 确保 GITHUB_TOKEN 有写入权限
+      contents: write
     steps:
 
       - name: Checkout script from target repository (NO LFS download)
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }} # 明确指定当前仓库
-          ref: tn # 脚本所在的您仓库的 tn 分支 (或 main/master)
-          lfs: false # 非常重要: 本次检出不尝试下载 LFS 文件
+          repository: ${{ github.repository }}
+          ref: tn
+          lfs: false
 
       - name: Prepare modification script
         run: |
           echo "Copying modification script to temporary location..."
           mkdir -p /tmp/workflow_scripts
-          # 确保脚本路径正确
           cp .github/scripts/apply_modifications.py /tmp/workflow_scripts/apply_modifications.py
-          echo "Script copied to /tmp/workflow_scripts/"
-          ls -l /tmp/workflow_scripts/
-          echo "Workspace content after script checkout (brief):"
-          ls -A1
+          echo "Script copied."
 
-      - name: Install Git LFS client and initialize for the repository
+      - name: Install Git LFS client and initialize
         run: |
-          echo "Installing Git LFS client..."
-          sudo apt-get update -q
-          sudo apt-get install -y git-lfs
-          echo "Initializing Git LFS for the current repository (skip smudge for now)..."
-          # 这会在 .git/hooks 中设置 pre-push 等钩子, 并配置 .git/config
-          # --skip-smudge 确保不会立即尝试转换工作区中已有的 LFS 指针
-          git lfs install --skip-smudge
-          echo "Git LFS client installed and initialized."
-          git lfs env # 显示 LFS 环境信息
-
-      # 当前工作区包含 huangwj55/openpilot@tn 的内容 (LFS 指针，而非实际文件)
-      # .git 目录是 huangwj55/openpilot 的
+          sudo apt-get update -q && sudo apt-get install -y git-lfs
+          git lfs install --skip-smudge # Initialize LFS, set up hooks
+          echo "Git LFS client installed."
 
       - name: Add sunnypilot remote and fetch its tn branch
         run: |
           git remote add sunnypilot_source https://github.com/sunnypilot/sunnypilot.git
-          echo "Fetching tn from sunnypilot_source (metadata and LFS pointers)..."
           git fetch sunnypilot_source tn --depth=1 --no-tags --no-recurse-submodules
-          echo "Fetch from sunnypilot_source completed."
-          git remote -v
+          echo "Fetched sunnypilot_source/tn."
 
       - name: Checkout sunnypilot/tn content into temp-sync-branch
         run: |
-          echo "Checking out fetched sunnypilot/tn branch into local temp-sync-branch..."
-          # 这会用 sunnypilot/tn 的内容覆盖工作目录
           git checkout -B temp-sync-branch refs/remotes/sunnypilot_source/tn
-          echo "Working directory now contains sunnypilot/tn content (LFS pointers)."
-          echo "Current branch: $(git rev-parse --abbrev-ref HEAD)"
-          echo "Workspace content (brief) after checking out sunnypilot/tn:"
-          ls -A1
+          echo "Checked out sunnypilot/tn content to temp-sync-branch."
+          echo "Checking for .lfsconfig from sunnypilot_source:"
+          ls -l .lfsconfig || echo ".lfsconfig not found from sunnypilot_source (this is good if it's not intended)."
 
       - name: Download LFS objects for temp-sync-branch from sunnypilot_source
         env:
-          GIT_LFS_TRACE_HTTP: "1" # 为此步骤启用 LFS HTTP 详细日志
+          GIT_LFS_TRACE_HTTP: "1"
         run: |
           echo "Fetching LFS objects for temp-sync-branch from sunnypilot_source..."
+          # If sunnypilot_source/tn has an .lfsconfig pointing elsewhere, this fetch might still use it.
+          # We need to ensure LFS operations use the correct remote's LFS endpoint.
+          # Temporarily override LFS URL for sunnypilot_source if its .lfsconfig is problematic
+          SUNNYPILOT_LFS_URL="https://github.com/sunnypilot/sunnypilot.git/info/lfs"
+          echo "Temporarily setting LFS URL for sunnypilot_source to $SUNNYPILOT_LFS_URL for fetch"
+          git config remote.sunnypilot_source.lfsurl "$SUNNYPILOT_LFS_URL"
+          
+          # Also, if there's a .lfsconfig from sunnypilot that interferes, remove/rename it before fetching its LFS
+          if [ -f .lfsconfig ]; then
+            echo "Found .lfsconfig from sunnypilot/tn. Backing it up and removing for fetch."
+            mv .lfsconfig .lfsconfig.sunnypilot_backup
+          fi
+
           CURRENT_COMMIT_SHA=$(git rev-parse HEAD)
-          # 从 sunnypilot_source 远程为当前提交拉取 LFS 对象
           git lfs fetch sunnypilot_source $CURRENT_COMMIT_SHA
           echo "Checking out (smudging) LFS objects for temp-sync-branch..."
-          # 这会将工作区中的 LFS 指针替换为从 sunnypilot_source 下载的实际文件
           git lfs checkout
-          echo "LFS objects for temp-sync-branch downloaded and checked out from sunnypilot_source."
+
+          # Restore .lfsconfig if it was backed up, in case the python script needs it
+          # (though unlikely for this sync purpose)
+          if [ -f .lfsconfig.sunnypilot_backup ]; then
+            echo "Restoring sunnypilot's .lfsconfig for script execution (if needed)."
+            mv .lfsconfig.sunnypilot_backup .lfsconfig
+          fi
+          echo "LFS objects downloaded from sunnypilot_source."
+
 
       - name: Apply custom modifications using script from temp location
         run: |
-          echo "Running Python script from temporary location on temp-sync-branch..."
+          echo "Running Python script..."
           python /tmp/workflow_scripts/apply_modifications.py
-          echo "Python script execution finished."
+          echo "Python script finished."
+
+      - name: Prepare for push to origin (handle .lfsconfig)
+        run: |
+          echo "Preparing .lfsconfig for push to origin (your repository)..."
+          # IMPORTANT: If a .lfsconfig exists (from sunnypilot), it will override .git/config for LFS push.
+          # We MUST ensure it's either removed or points to *your* GitHub LFS endpoint.
+          if [ -f .lfsconfig ]; then
+            echo "Removing .lfsconfig brought from sunnypilot/tn to ensure push to *your* GitHub LFS."
+            rm -f .lfsconfig
+          fi
+          # Alternatively, create/overwrite .lfsconfig to point to your GitHub:
+          # YOUR_GITHUB_LFS_URL="https://github.com/${{ github.repository }}.git/info/lfs"
+          # echo "[lfs]" > .lfsconfig
+          # echo "  url = $YOUR_GITHUB_LFS_URL" >> .lfsconfig
+          # echo "Updated/Created .lfsconfig to point to your GitHub LFS."
+          # cat .lfsconfig
 
       - name: Commit the changes to temp-sync-branch
         id: commit_changes
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add . # 这会暂存普通文件和 LFS 指针文件的更改
+          # Add .lfsconfig if you chose to create/overwrite it in the previous step
+          git add .
           if git diff --staged --quiet; then
-             echo "No effective changes to commit."
+             echo "No effective changes."
              echo "changes_made=false" >> $GITHUB_OUTPUT
           else
              git commit -m "Apply custom modifications after syncing from sunnypilot/tn"
-             echo "Changes committed to temp-sync-branch."
+             echo "Changes committed."
              echo "changes_made=true" >> $GITHUB_OUTPUT
           fi
 
       - name: Push modified temp-sync-branch to your repository's tm branch
         if: steps.commit_changes.outputs.changes_made == 'true'
         env:
-          GIT_LFS_TRACE_HTTP: "1" # 为 LFS 推送启用详细日志
-          GIT_TERMINAL_PROMPT: "0" # 禁止交互式提示
+          GIT_LFS_TRACE_HTTP: "1"
+          GIT_TERMINAL_PROMPT: "0"
         run: |
-          echo "--- Running 'git lfs env' before push ---"
-          git lfs env
+          echo "--- Running 'git lfs env' before push (after .lfsconfig manipulation) ---"
+          git lfs env # This should now reflect your GitHub LFS endpoint for origin
 
-          # 'origin' 远程应该仍然指向 huangwj55/openpilot (由第一次 checkout 设置)
-          # 如果没有，或者为了保险，可以重新设置
-          echo "--- Current remotes: ---"
-          git remote -v
-          
           ORIGIN_REPO_URL_WITH_TOKEN="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
-
-          echo "Ensuring remote.origin.url (for Git push) is set with token: $ORIGIN_REPO_URL_WITH_TOKEN"
+          
+          echo "Setting remote.origin.url (Git push): $ORIGIN_REPO_URL_WITH_TOKEN"
           git config remote.origin.url "$ORIGIN_REPO_URL_WITH_TOKEN"
           
-          # 确保 LFS 推送也使用带 token 的 URL
-          # git lfs install 已经设置了 pre-push 钩子，它会处理 LFS 对象的上传
-          # LFS 会尝试使用 Git 的凭证辅助程序或 HTTP 头中的认证信息
-          # 为了确保 LFS 也使用正确的 token，显式设置 lfsurl 是个好办法
-          echo "Setting remote.origin.lfsurl (for LFS push) to: ${ORIGIN_REPO_URL_WITH_TOKEN}/info/lfs"
+          echo "Setting remote.origin.lfsurl (LFS push): ${ORIGIN_REPO_URL_WITH_TOKEN}/info/lfs"
+          # This might be redundant if .lfsconfig was removed, but good for clarity
           git config remote.origin.lfsurl "${ORIGIN_REPO_URL_WITH_TOKEN}/info/lfs"
 
-          echo "--- Content of .git/config AFTER LFS URL modification ---"
+          echo "--- .git/config AFTER final LFS URL modification ---"
           cat .git/config
 
-          echo "Pushing local temp-sync-branch to origin/tm (Git commit and LFS objects)..."
-          # pre-push 钩子会负责上传 LFS 对象到 origin (huangwj55/openpilot)
+          echo "Pushing to origin/tm (Git commit and LFS objects)..."
           git push origin temp-sync-branch:tm --force
-          
-          echo "Push to origin/tm completed."
+          echo "Push completed."
       
       - name: No changes to push
         if: steps.commit_changes.outputs.changes_made == 'false'
-        run: echo "No changes detected by Python script or sync. Nothing to push to tm."
+        run: echo "No changes. Nothing to push."
