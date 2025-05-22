@@ -70,23 +70,12 @@ jobs:
              echo "changes_made=true" >> $GITHUB_OUTPUT
           fi
       
-      # ... (Push step - modified as above) ...
-      - name: Push modified temp-sync-branch to your repository's tm branch
-        if: steps.commit_changes.outputs.changes_made == 'true'
+      - name: No changes to commit
+        if: steps.check_status.outputs.changes_detected == 'false'
+        run: echo "No file changes detected by Python script. Nothing to commit."
+
+      - name: Force push modified tn-prebuilt to your repository
         run: |
-          echo "Current git remotes before setting URL:"
-          git remote -v
-
-          echo "Configuring remote origin URL with GITHUB_TOKEN for push..."
-          git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
-          
-          echo "Updated git remotes:"
-          git remote -v
-
-          echo "Pushing local temp-sync-branch to origin/tm..."
+          echo "Pushing local tn-prebuilt to origin/tn-prebuilt..."
           git push origin temp-sync-branch:tm --force
           echo "Push to origin/tm completed."
-      
-      - name: No changes to push
-        if: steps.commit_changes.outputs.changes_made == 'false'
-        run: echo "No effective changes detected by Python script or sync. Nothing to push to tm."
