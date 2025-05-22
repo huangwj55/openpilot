@@ -50,7 +50,6 @@ jobs:
           echo "Python script execution finished."
 
       - name: Commit the changes
-        if: steps.check_status.outputs.changes_detected == 'true'
         run: |
           echo "Changes detected. Staging and committing..."
           git config --global user.name 'github-actions[bot]'
