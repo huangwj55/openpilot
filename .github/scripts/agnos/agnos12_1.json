@@ -1,0 +1,84 @@
+[
+  {
+    "name": "xbl",
+    "url": "http://192.168.10.196:8082/agnos/12_1/xbl-468f1ad6ab55e198647ff9191f91bd2918db9c0a3e27bae5673b4c5575c1254c.img.xz",
+    "hash": "440dd7cca38bf657689b6a26fa107aba386e3bafb2b507a3a9b133f0d7acf058",
+    "hash_raw": "468f1ad6ab55e198647ff9191f91bd2918db9c0a3e27bae5673b4c5575c1254c",
+    "size": 3282256,
+    "sparse": false,
+    "full_check": true,
+    "has_ab": true,
+    "ondevice_hash": "d35a86e7b8ddd9279b513a6f27da1521aa0f89fb93987ea74d57d0f0bbbbd247"
+  },
+  {
+    "name": "xbl_config",
+    "url": "http://192.168.10.196:8082/agnos/12_1/xbl_config-92b675dc2862ed15c732d91d9eb307d7e852e349217db8bee8f8829db543686b.img.xz",
+    "hash": "6d8cb0d68b3e86455163a7be47a71570e0c46219ba7a2c7ceefc8ef98ce2c7f1",
+    "hash_raw": "92b675dc2862ed15c732d91d9eb307d7e852e349217db8bee8f8829db543686b",
+    "size": 98124,
+    "sparse": false,
+    "full_check": true,
+    "has_ab": true,
+    "ondevice_hash": "623f1568072ee2d687ba8449a3d894c1c83dc4131b2e79eff35696885f70a419"
+  },
+  {
+    "name": "abl",
+    "url": "http://192.168.10.196:8082/agnos/12_1/abl-32a2174b5f764e95dfc54cf358ba01752943b1b3b90e626149c3da7d5f1830b6.img.xz",
+    "hash": "8f88d657ea005fabe7004b34dacf4b0afaee341fa6d73424380d9e7ec9efe4ec",
+    "hash_raw": "32a2174b5f764e95dfc54cf358ba01752943b1b3b90e626149c3da7d5f1830b6",
+    "size": 274432,
+    "sparse": false,
+    "full_check": true,
+    "has_ab": true,
+    "ondevice_hash": "32a2174b5f764e95dfc54cf358ba01752943b1b3b90e626149c3da7d5f1830b6"
+  },
+  {
+    "name": "aop",
+    "url": "http://192.168.10.196:8082/agnos/12_1/aop-f0fcf7611d0890a72984f15a516dd37fa532dfcb70d428a8406838cf74ce23d5.img.xz",
+    "hash": "b0225124e3602db82a5a89e0e0670a2774897373401bc1849d59767efd00b5e8",
+    "hash_raw": "f0fcf7611d0890a72984f15a516dd37fa532dfcb70d428a8406838cf74ce23d5",
+    "size": 184364,
+    "sparse": false,
+    "full_check": true,
+    "has_ab": true,
+    "ondevice_hash": "bf74feca486f650589f6b7c90eab73274e35a68b5e00bfc1de0ed5f5484d4b3d"
+  },
+  {
+    "name": "devcfg",
+    "url": "http://192.168.10.196:8082/agnos/12_1/devcfg-225b24ea7b1d2fee7f7d2da21386920ddacac2e33e9e938168436292f4eae180.img.xz",
+    "hash": "b3c0a1427a34ca926be3af5f83b2dbfacfa16652ff31ca1292b7e23524045e88",
+    "hash_raw": "225b24ea7b1d2fee7f7d2da21386920ddacac2e33e9e938168436292f4eae180",
+    "size": 40336,
+    "sparse": false,
+    "full_check": true,
+    "has_ab": true,
+    "ondevice_hash": "70f682b59ca0fe2f197d1486bd8be7b9b7e560798ad40ddef83b9f0a2f497938"
+  },
+  {
+    "name": "boot",
+    "url": "http://192.168.10.196:8082/agnos/12_1/boot-3d8e848796924081f5a6b3d745808b1117ae2ec41c03f2d41ee2e75633bd6425.img.xz",
+    "hash": "4e23484c9174ea998f9dc321cfd1554ad1ad731c4f2756ad9e7634916a2b1ecb",
+    "hash_raw": "3d8e848796924081f5a6b3d745808b1117ae2ec41c03f2d41ee2e75633bd6425",
+    "size": 18479104,
+    "sparse": false,
+    "full_check": true,
+    "has_ab": true,
+    "ondevice_hash": "2075104847d1c96a06f07e85efb9f48d0e792d75a059047eae7ba4b463ffeadf"
+  },
+  {
+    "name": "system",
+    "url": "http://192.168.10.196:8082/agnos/12_1/system-b22bd239c6f9527596fd49b98b7d521a563f99b90953ce021ee36567498e99c7.img.xz",
+    "hash": "d55f37c8cbc1de9c94819d74815199708a128ffe37bbb0c4e5b807361df53661",
+    "hash_raw": "cb9bfde1e995b97f728f5d5ad8d7a0f7a01544db5d138ead9b2350f222640939",
+    "size": 5368709120,
+    "sparse": true,
+    "full_check": false,
+    "has_ab": true,
+    "ondevice_hash": "e92a1f34158c60364c8d47b8ebbb6e59edf8d4865cd5edfeb2355d6f54f617fc",
+    "alt": {
+      "hash": "b22bd239c6f9527596fd49b98b7d521a563f99b90953ce021ee36567498e99c7",
+      "url": "https://commadist.azureedge.net/agnosupdate/system-b22bd239c6f9527596fd49b98b7d521a563f99b90953ce021ee36567498e99c7.img",
+      "size": 5368709120
+    }
+  }
+]

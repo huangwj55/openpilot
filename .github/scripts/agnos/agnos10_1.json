@@ -1,0 +1,77 @@
+[
+  {
+    "name": "boot",
+    "url": "http://192.168.10.196:8082/agnos/10_1/boot-5674ea6767e7198cf1e7def3de66a57061f001ed76d43dc4b4f84de545c53c6f.img.xz",
+    "hash": "f8d707a86aaa365017fd7f26dcda117e50cd1975fd79744b7de60e18b2704c65",
+    "hash_raw": "5674ea6767e7198cf1e7def3de66a57061f001ed76d43dc4b4f84de545c53c6f",
+    "size": 16029696,
+    "sparse": false,
+    "full_check": true,
+    "has_ab": true
+  },
+  {
+    "name": "abl",
+    "url": "http://192.168.10.196:8082/agnos/10_1/abl-eeb89a74c968a5a2ffce96f23158b72e03e2814adf72ef59d1200ba8ea5d2f39.img.xz",
+    "hash": "84e945a16a173efc5ab0e3229c3a58f0862cb2ea6607798cf6e42814daa15352",
+    "hash_raw": "eeb89a74c968a5a2ffce96f23158b72e03e2814adf72ef59d1200ba8ea5d2f39",
+    "size": 274432,
+    "sparse": false,
+    "full_check": true,
+    "has_ab": true
+  },
+  {
+    "name": "xbl",
+    "url": "http://192.168.10.196:8082/agnos/10_1/xbl-bcef195b00a1ab685da601f4072722569773ab161e91c8753ad99ca4217a28f5.img.xz",
+    "hash": "7fd9257f1dd513e16075486997886ff49ec8d4974a4ec48f621605776c687ed7",
+    "hash_raw": "bcef195b00a1ab685da601f4072722569773ab161e91c8753ad99ca4217a28f5",
+    "size": 3282672,
+    "sparse": false,
+    "full_check": true,
+    "has_ab": true
+  },
+  {
+    "name": "xbl_config",
+    "url": "http://192.168.10.196:8082/agnos/10_1/xbl_config-19791056558c16f8dae787531b5e30b3b3db2ded9d666688df45ce1b91a72bac.img.xz",
+    "hash": "be435dc408d25f3ba8122d6592500d4d2eb2de7b021de39ca424ee90fe1bd0e6",
+    "hash_raw": "19791056558c16f8dae787531b5e30b3b3db2ded9d666688df45ce1b91a72bac",
+    "size": 98124,
+    "sparse": false,
+    "full_check": true,
+    "has_ab": true
+  },
+  {
+    "name": "devcfg",
+    "url": "http://192.168.10.196:8082/agnos/10_1/devcfg-be44b73dda5be840b09d5347d536459e31098da3fea97596956c0bdad19bdf27.img.xz",
+    "hash": "3aa22969d3808a144fa80796c03a9bf32fc188ce79818b9757af9c48ef174e3f",
+    "hash_raw": "be44b73dda5be840b09d5347d536459e31098da3fea97596956c0bdad19bdf27",
+    "size": 40336,
+    "sparse": false,
+    "full_check": true,
+    "has_ab": true
+  },
+  {
+    "name": "aop",
+    "url": "http://192.168.10.196:8082/agnos/10_1/aop-5d764611a683d6a738cf06a1dcf8a926d0f47b5117ad40d3054167de6dd8bd0f.img.xz",
+    "hash": "621510c2affe12f44aeea8e9f06d6a82684d6667fdcaaade79d59d600fe0f723",
+    "hash_raw": "5d764611a683d6a738cf06a1dcf8a926d0f47b5117ad40d3054167de6dd8bd0f",
+    "size": 184364,
+    "sparse": false,
+    "full_check": true,
+    "has_ab": true
+  },
+  {
+    "name": "system",
+    "url": "http://192.168.10.196:8082/agnos/10_1/system-1badfe72851628d6cf9200a53a6151bb4e797b49c717141409fc57138eae388a.img.xz",
+    "hash": "9bb30b6a83d26bcd097b4682b52d9373910085bbfabd57aa63b7828299bca24d",
+    "hash_raw": "328e90c62068222dfd98f71dd3f6251fcb962f082b49c6be66ab2699f5db6f4f",
+    "size": 4548074124,
+    "sparse": true,
+    "full_check": false,
+    "has_ab": true,
+    "alt": {
+      "hash": "bc11d2148f29862ee1326aca2af1cf6bbf5fed831e3f8f6b8f7a0f110dfe8d26",
+      "url": "https://commadist.azureedge.net/agnosupdate/system-skip-chunks-1badfe72851628d6cf9200a53a6151bb4e797b49c717141409fc57138eae388a.img.xz",
+      "size": 4548070000
+    }
+  }
+]
