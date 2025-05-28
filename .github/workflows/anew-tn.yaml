@@ -15,11 +15,12 @@ jobs:
       - name: Checkout script from target repository (NO LFS download)
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
           repository: ${{ github.repository }}
           ref: tn
           lfs: false
-
+          persist-credentials: false 
+          
       - name: Prepare modification script
         run: |
           echo "Copying modification script to temporary location..."
@@ -141,7 +142,7 @@ jobs:
           echo "--- Running 'git lfs env' before push (after .lfsconfig manipulation) ---"
           git lfs env # This should now reflect your GitHub LFS endpoint for origin
 
-          ORIGIN_REPO_URL_WITH_TOKEN="https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          ORIGIN_REPO_URL_WITH_TOKEN="https://x-access-token:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/${{ github.repository }}.git"
           
           echo "Setting remote.origin.url (Git push): $ORIGIN_REPO_URL_WITH_TOKEN"
           git config remote.origin.url "$ORIGIN_REPO_URL_WITH_TOKEN"
