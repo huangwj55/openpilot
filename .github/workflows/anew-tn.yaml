@@ -83,7 +83,13 @@ jobs:
           echo "Running Python script..."
           python /tmp/workflow_scripts/apply_modifications.py
           echo "Python script finished."
-
+      - name: Remove workflow files from Git index
+        run: |
+          echo "Explicitly removing workflow files to avoid permission errors..."
+          git rm --cached -r .github/workflows || true
+          git restore --source=HEAD --staged .github/workflows || true
+          echo "Workflow files removed from staging area."
+          
       - name: Prepare for push to origin (handle .lfsconfig)
         run: |
           echo "Preparing .lfsconfig for push to origin (your repository)..."
