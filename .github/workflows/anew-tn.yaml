@@ -106,7 +106,7 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           # Add .lfsconfig if you chose to create/overwrite it in the previous step
-          git add . ':! .github/workflows/*'
+          git add . ':! .github/*'
           if git diff --staged --quiet; then
              echo "No effective changes."
              echo "changes_made=false" >> $GITHUB_OUTPUT
