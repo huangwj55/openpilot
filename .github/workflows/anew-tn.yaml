@@ -106,14 +106,23 @@ jobs:
           # echo "Updated/Created .lfsconfig to point to your GitHub LFS."
           # cat .lfsconfig
 
+
       - name: Commit the changes to temp-sync-branch
         id: commit_changes
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          # Add .lfsconfig if you chose to create/overwrite it in the previous step
-          git rm --cached -r .github/workflows || true
-          git add . ':! .github/*'
+
+          # 先添加所有改动
+          git add --all .
+
+          # 明确撤销 .github/workflows 下的所有文件（确保这些文件不在暂存区中）
+          git reset -- .github/workflows/
+
+          # 可选：检查暂存区状态，确认没有 workflow 文件
+          echo "Staged changes:"
+          git status --short
+
           if git diff --staged --quiet; then
              echo "No effective changes."
              echo "changes_made=false" >> $GITHUB_OUTPUT
