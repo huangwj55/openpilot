@@ -210,15 +210,15 @@ def modify_pandad_py(filename):
     modified = False
     for line in fileinput.input(filename, inplace=True, encoding="utf-8"):
         line_out = line
-        if 'if time.monotonic() < 25.:' in line:
+        if 'if time.monotonic() < 35.:' in line:
             if 'if time.monotonic() < 45.:' in line: # Already modified
                 pass
             else:
-                line_out = line.replace('25.', '45.')
+                line_out = line.replace('35.', '45.')
                 modified = True
         print(line_out, end='')
     if modified:
-        print("  time.monotonic limit changed from 25 to 45.")
+        print("  time.monotonic limit changed from 35 to 45.")
     return True # Assume success
 
 # 🆕 修改 hardwared.py
