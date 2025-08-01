@@ -62,7 +62,7 @@ def modify_launch_script(filename):
     lines_to_insert = [
         "export API_HOST=https://api.konik.ai\n",
         "export ATHENA_HOST=wss://athena.konik.ai\n",
-        "export MAPS_HOST=https://api.konik.ai/maps\n",
+        "#export MAPS_HOST=https://api.konik.ai/maps\n",
         "export MAPBOX_TOKEN='pk.eyJ1IjoibXJvbmVjYyIsImEiOiJjbHhqbzlkbTYxNXUwMmtzZjdoMGtrZnVvIn0.SC7GNLtMFUGDgC2bAZcKzg'\n"
     ]
 
