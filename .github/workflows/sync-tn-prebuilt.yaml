@@ -1,7 +1,5 @@
-# 文件名: .github/workflows/sync-tn-prebuilt.yaml
-# YAML - 严格使用 2 空格缩进，无 Tab
-
-name: AAA Sync sunnypilot tn-prebuilt
+# 文件名: .github/workflows/sync-tn-to-tm.yaml
+name: AAA Sync sunnypilot tn-pb to my tm-pb
 on:
   schedule:
     - cron: '0 10 * * *'
@@ -10,64 +8,156 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
 
-      - name: Checkout target repository (contains script)
+      - name: Checkout script from target repository (NO LFS download)
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          ref: tn # 明确指定签出 tn 分支，确保拿到脚本
-
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          repository: ${{ github.repository }}
+          ref: tn
+          lfs: false
+          persist-credentials: false 
+          
       - name: Prepare modification script
         run: |
           echo "Copying modification script to temporary location..."
           mkdir -p /tmp/workflow_scripts
           cp .github/scripts/apply_modifications.py /tmp/workflow_scripts/apply_modifications.py
-          echo "Script copied to /tmp/workflow_scripts/"
-          ls -l /tmp/workflow_scripts/
-          
-      - name: Add sunnypilot remote and fetch tn-prebuilt branch
+          echo "Script copied."
+
+      - name: Install Git LFS client and initialize
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y git-lfs
+          git lfs install --skip-smudge # Initialize LFS, set up hooks
+          echo "Git LFS client installed."
+
+      - name: Add sunnypilot remote and fetch its tn branch
         run: |
           git remote add sunnypilot_source https://github.com/sunnypilot/sunnypilot.git
-          echo "Fetching tn-prebuilt from sunnypilot..."
-          git fetch sunnypilot_source tn-prebuilt --depth=1 --no-tags
-          echo "Fetch completed."
+          git fetch sunnypilot_source tn-prebuilt --depth=1 --no-tags --no-recurse-submodules
+          echo "Fetched sunnypilot_source/tn-prebuilt."
 
-      - name: Checkout the fetched tn-prebuilt branch locally (Overwrites workspace)
+      - name: Checkout sunnypilot/tn content into temp-sync-branch
         run: |
-          echo "Checking out fetched branch into working directory..."
-          # 这个操作会删除工作区内的 .github/scripts/apply_modifications.py
-          git checkout -B tn-prebuilt refs/remotes/sunnypilot_source/tn-prebuilt
-          echo "Working directory now contains tn-prebuilt content."
-          echo "Checking if original script path exists (it should NOT):"
-          ls -l .github/scripts/apply_modifications.py || echo "Original script path no longer exists as expected."
+          git checkout -B temp-sync-branch refs/remotes/sunnypilot_source/tn-prebuilt
+          echo "Checked out sunnypilot/tn-prebuilt content to temp-sync-branch."
+          echo "Checking for .lfsconfig from sunnypilot_source:"
+          ls -l .lfsconfig || echo ".lfsconfig not found from sunnypilot_source (this is good if it's not intended)."
+
+      - name: Download LFS objects for temp-sync-branch from sunnypilot_source
+        env:
+          GIT_LFS_TRACE_HTTP: "1"
+        run: |
+          echo "Fetching LFS objects for temp-sync-branch from sunnypilot_source..."
+          # If sunnypilot_source/tn has an .lfsconfig pointing elsewhere, this fetch might still use it.
+          # We need to ensure LFS operations use the correct remote's LFS endpoint.
+          # Temporarily override LFS URL for sunnypilot_source if its .lfsconfig is problematic
+          SUNNYPILOT_LFS_URL="https://github.com/sunnypilot/sunnypilot.git/info/lfs"
+          echo "Temporarily setting LFS URL for sunnypilot_source to $SUNNYPILOT_LFS_URL for fetch"
+          git config remote.sunnypilot_source.lfsurl "$SUNNYPILOT_LFS_URL"
+          
+          # Also, if there's a .lfsconfig from sunnypilot that interferes, remove/rename it before fetching its LFS
+          if [ -f .lfsconfig ]; then
+            echo "Found .lfsconfig from sunnypilot/tn-prebuilt. Backing it up and removing for fetch."
+            mv .lfsconfig .lfsconfig.sunnypilot_backup
+          fi
+
+          CURRENT_COMMIT_SHA=$(git rev-parse HEAD)
+          git lfs fetch sunnypilot_source $CURRENT_COMMIT_SHA
+          echo "Checking out (smudging) LFS objects for temp-sync-branch..."
+          git lfs checkout
+
+          # Restore .lfsconfig if it was backed up, in case the python script needs it
+          # (though unlikely for this sync purpose)
+          if [ -f .lfsconfig.sunnypilot_backup ]; then
+            echo "Restoring sunnypilot's .lfsconfig for script execution (if needed)."
+            mv .lfsconfig.sunnypilot_backup .lfsconfig
+          fi
+          echo "LFS objects downloaded from sunnypilot_source."
+
 
       - name: Apply custom modifications using script from temp location
         run: |
-          echo "Running Python script from temporary location..."
-          ls -l /tmp/workflow_scripts/apply_modifications.py
+          echo "Running Python script..."
           python /tmp/workflow_scripts/apply_modifications.py
-          echo "Python script execution finished."
-
-      - name: Commit the changes
+          echo "Python script finished."
+      - name: Remove workflow files from Git index
         run: |
-          echo "Changes detected. Staging and committing..."
+          echo "Explicitly removing workflow files to avoid permission errors..."
+          git rm --cached -r .github/workflows || true
+          git restore --source=HEAD --staged .github/workflows || true
+          echo "Workflow files removed from staging area."
+          
+      - name: Prepare for push to origin (handle .lfsconfig)
+        run: |
+          echo "Preparing .lfsconfig for push to origin (your repository)..."
+          # IMPORTANT: If a .lfsconfig exists (from sunnypilot), it will override .git/config for LFS push.
+          # We MUST ensure it's either removed or points to *your* GitHub LFS endpoint.
+          if [ -f .lfsconfig ]; then
+            echo "Removing .lfsconfig brought from sunnypilot/tn-prebuilt to ensure push to *your* GitHub LFS."
+            rm -f .lfsconfig
+          fi
+          # Alternatively, create/overwrite .lfsconfig to point to your GitHub:
+          # YOUR_GITHUB_LFS_URL="https://github.com/${{ github.repository }}.git/info/lfs"
+          # echo "[lfs]" > .lfsconfig
+          # echo "  url = $YOUR_GITHUB_LFS_URL" >> .lfsconfig
+          # echo "Updated/Created .lfsconfig to point to your GitHub LFS."
+          # cat .lfsconfig
+
+
+      - name: Commit the changes to temp-sync-branch
+        id: commit_changes
+        run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add .
+
+          # 先添加所有改动
+          git add --all .
+
+          # 明确撤销 .github/workflows 下的所有文件（确保这些文件不在暂存区中）
+          git reset -- .github/workflows/
+
+          # 可选：检查暂存区状态，确认没有 workflow 文件
+          echo "Staged changes:"
+          git status --short
+
           if git diff --staged --quiet; then
-             echo "Files were staged but content matches HEAD. Skipping commit."
+             echo "No effective changes."
+             echo "changes_made=false" >> $GITHUB_OUTPUT
           else
-             git commit -m "Apply custom modifications via script after syncing from sunnypilot/tn-prebuilt"
+             git commit -m "Apply custom modifications after syncing from sunnypilot/tn-prebuilt"
              echo "Changes committed."
+             echo "changes_made=true" >> $GITHUB_OUTPUT
           fi
 
-      - name: No changes to commit
-        if: steps.check_status.outputs.changes_detected == 'false'
-        run: echo "No file changes detected by Python script. Nothing to commit."
-
-      - name: Force push modified tn-prebuilt to your repository
+      - name: Push modified temp-sync-branch to your repository's tm branch
+        if: steps.commit_changes.outputs.changes_made == 'true'
+        env:
+          GIT_LFS_TRACE_HTTP: "1"
+          GIT_TERMINAL_PROMPT: "0"
         run: |
-          echo "Pushing local tn-prebuilt to origin/tn-prebuilt..."
-          git push origin tn-prebuilt --force
+          echo "--- Running 'git lfs env' before push (after .lfsconfig manipulation) ---"
+          git lfs env # This should now reflect your GitHub LFS endpoint for origin
+
+          ORIGIN_REPO_URL_WITH_TOKEN="https://x-access-token:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/${{ github.repository }}.git"
+          
+          echo "Setting remote.origin.url (Git push): $ORIGIN_REPO_URL_WITH_TOKEN"
+          git config remote.origin.url "$ORIGIN_REPO_URL_WITH_TOKEN"
+          
+          echo "Setting remote.origin.lfsurl (LFS push): ${ORIGIN_REPO_URL_WITH_TOKEN}/info/lfs"
+          # This might be redundant if .lfsconfig was removed, but good for clarity
+          git config remote.origin.lfsurl "${ORIGIN_REPO_URL_WITH_TOKEN}/info/lfs"
+
+          echo "--- .git/config AFTER final LFS URL modification ---"
+          cat .git/config
+
+          echo "Pushing to origin/tm-pb (Git commit and LFS objects)..."
+          git push origin temp-sync-branch:tm-pb --force
           echo "Push completed."
+      
+      - name: No changes to push
+        if: steps.commit_changes.outputs.changes_made == 'false'
+        run: echo "No changes. Nothing to push."
