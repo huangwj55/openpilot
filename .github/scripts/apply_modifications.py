@@ -164,14 +164,13 @@ def modify_hardwared_py(filename):
         print(f"  '{target_str}' commented with pass#.")
     return True
 
-# 🆕 新增：修改 selfdrived.py 以关闭 DM 相关报错
+# 🆕 新增：修改 selfdrived.py 以关闭 DM 相关报错及新增的报错
 def modify_selfdrived_py(filename):
-    print(f"Modifying {filename} to close DM errors...")
+    print(f"Modifying {filename} to close DM errors and other alerts...")
     if not os.path.exists(filename):
         print(f"File not found: {filename}", file=sys.stderr)
         return False
 
-    # 由于修改包含添加行和替换多行，使用 read/write 模式比 fileinput 更稳妥
     try:
         with open(filename, 'r', encoding='utf-8') as f:
             lines = f.readlines()
@@ -184,63 +183,110 @@ def modify_selfdrived_py(filename):
             line = lines[i]
             indent = line[:len(line) - len(line.lstrip())]
             stripped_line = line.strip()
+            line_modified_in_this_iter = False # 标记当前行是否已被修改或跳过
 
             # --- 修改点 1: 增加 ignore 列表 ---
-            # ignore = self.sensor_packets + self.gps_packets + ['alertDebug']
             target_line_1 = "ignore = self.sensor_packets + self.gps_packets + ['alertDebug']"
             line_to_add_1 = "ignore += ['driverCameraState', 'managerState', 'driverMonitoringState']"
             
-            new_lines.append(line) # 先把当前行加进去
-
             if target_line_1 in stripped_line:
+                new_lines.append(line) # 先把当前行加进去
                 # 检查下一行是否已经是我们要添加的内容，避免重复添加
-                if i + 1 < len(lines) and line_to_add_1 in lines[i+1]:
+                if i + 1 < len(lines) and line_to_add_1.strip() in lines[i+1].strip():
                     pass # 已经存在，什么都不做
                 else:
                     new_lines.append(f"{indent}{line_to_add_1}\n")
                     modified = True
+                line_modified_in_this_iter = True
             
             # --- 修改点 2: 注释 commIssue ---
-            # if not self.sm.all_alive():
             elif "if not self.sm.all_alive():" in stripped_line:
-                # 期望的下一行是 self.events.add(EventName.commIssue)
+                new_lines.append(line)
                 if i + 1 < len(lines) and "self.events.add(EventName.commIssue)" in lines[i+1]:
                     next_line_indent = lines[i+1][:len(lines[i+1]) - len(lines[i+1].lstrip())]
                     new_lines.append(f"{next_line_indent}pass # {lines[i+1].strip()}\n")
                     i += 1 # 跳过原始的 self.events.add 行
                     modified = True
+                line_modified_in_this_iter = True
             
-            # elif not self.sm.all_freq_ok():
             elif "elif not self.sm.all_freq_ok():" in stripped_line:
+                new_lines.append(line)
                 if i + 1 < len(lines) and "self.events.add(EventName.commIssueAvgFreq)" in lines[i+1]:
                     next_line_indent = lines[i+1][:len(lines[i+1]) - len(lines[i+1].lstrip())]
                     new_lines.append(f"{next_line_indent}pass # {lines[i+1].strip()}\n")
                     i += 1
                     modified = True
+                line_modified_in_this_iter = True
 
-            # else: (针对 commIssue 的 else)
-            elif stripped_line == "else:" and "commIssue" in lines[i+1]:
-                 if i + 1 < len(lines) and "self.events.add(EventName.commIssue)" in lines[i+1]:
-                    next_line_indent = lines[i+1][:len(lines[i+1]) - len(lines[i+1].lstrip())]
-                    new_lines.append(f"{next_line_indent}pass # {lines[i+1].strip()}\n")
-                    i += 1
-                    modified = True
+            elif stripped_line == "else:" and i + 1 < len(lines) and "self.events.add(EventName.commIssue)" in lines[i+1]:
+                # 确认这个else是针对commIssue的
+                new_lines.append(line)
+                next_line_indent = lines[i+1][:len(lines[i+1]) - len(lines[i+1].lstrip())]
+                new_lines.append(f"{next_line_indent}pass # {lines[i+1].strip()}\n")
+                i += 1
+                modified = True
+                line_modified_in_this_iter = True
 
             # --- 修改点 3: 注释 cameraMalfunction ---
-            # if not self.sm.all_alive(self.camera_packets):
             elif "if not self.sm.all_alive(self.camera_packets):" in stripped_line:
-                 if i + 1 < len(lines) and "self.events.add(EventName.cameraMalfunction)" in lines[i+1]:
+                new_lines.append(line)
+                if i + 1 < len(lines) and "self.events.add(EventName.cameraMalfunction)" in lines[i+1]:
                     next_line_indent = lines[i+1][:len(lines[i+1]) - len(lines[i+1].lstrip())]
                     new_lines.append(f"{next_line_indent}pass # {lines[i+1].strip()}\n")
                     i += 1
                     modified = True
+                line_modified_in_this_iter = True
+            
+            # --- 🆕 新增修改点 ---
+            # 1. cloudlog.event("process_not_running", not_running=not_running, error=True)
+            elif stripped_line == 'cloudlog.event("process_not_running", not_running=not_running, error=True)':
+                if not line.lstrip().startswith("pass#"):
+                    new_lines.append(f"{indent}pass#{stripped_line}\n")
+                    modified = True
+                else: # 如果已经修改，直接添加原行
+                    new_lines.append(line)
+                line_modified_in_this_iter = True
+
+            # 2. self.events.add(EventName.processNotRunning)
+            elif stripped_line == 'self.events.add(EventName.processNotRunning)':
+                if not line.lstrip().startswith("pass#"):
+                    new_lines.append(f"{indent}pass#{stripped_line}\n")
+                    modified = True
+                else:
+                    new_lines.append(line)
+                line_modified_in_this_iter = True
+
+            # 3. self.events.add(EventName.sensorDataInvalid)
+            elif stripped_line == 'self.events.add(EventName.sensorDataInvalid)':
+                if not line.lstrip().startswith("pass#"):
+                    new_lines.append(f"{indent}pass#{stripped_line}\n")
+                    modified = True
+                else:
+                    new_lines.append(line)
+                line_modified_in_this_iter = True
+
+            # 4. self.events.add(EventName.noGps)
+            elif stripped_line == 'self.events.add(EventName.noGps)':
+                if not line.lstrip().startswith("pass#"):
+                    new_lines.append(f"{indent}pass#{stripped_line}\n")
+                    modified = True
+                else:
+                    new_lines.append(line)
+                line_modified_in_this_iter = True
+
+            # 如果当前行没有被上述任何条件处理过，则直接添加原始行
+            if not line_modified_in_this_iter:
+                new_lines.append(line)
             
             i += 1
 
         if modified:
             with open(filename, 'w', encoding='utf-8') as f:
                 f.writelines(new_lines)
-            print("  selfdrived.py modified to ignore DM/camera/comm issues.")
+            print("  selfdrived.py modified to ignore DM/camera/comm issues and other specified alerts.")
+        else:
+            print("  selfdrived.py already in desired state for specified alerts.")
+
 
         return True
 
