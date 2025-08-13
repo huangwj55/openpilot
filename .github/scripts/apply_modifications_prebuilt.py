@@ -169,6 +169,7 @@ def modify_launch_script(filename):
         print(f"  Error modifying {filename}: {e}", file=sys.stderr)
         return False
 
+# ‼️ 更新后的 selfdrived.py 修改函数
 def modify_selfdrived_py(filename):
     print(f"Modifying {filename}...")
     if not os.path.exists(filename):
@@ -185,23 +186,43 @@ def modify_selfdrived_py(filename):
             line = lines[i]
             stripped_line = line.strip()
 
-            if "ignore = self.sensor_packets + self.gps_packets + ['alertDebug']" in stripped_line:
-                new_lines.append(line)
-                if not (i + 1 < len(lines) and "ignore +=" in lines[i+1]):
+            # 修改点 1: 修改 if SIMULATION 块
+            if stripped_line == "if SIMULATION:":
+                # 检查下一行是否是我们期望修改的行，确保上下文正确
+                if i + 1 < len(lines) and "ignore += ['driverCameraState', 'managerState']" in lines[i+1]:
                     indent = line[:len(line) - len(line.lstrip())]
-                    new_lines.append(f"{indent}    ignore += ['driverCameraState', 'managerState', 'driverMonitoringState']\n")
+                    next_indent = lines[i+1][:len(lines[i+1]) - len(lines[i+1].lstrip())]
+                    
+                    # 添加修改后的代码块
+                    new_lines.append(f"{indent}if True:\n")
+                    new_lines.append(f"{next_indent}ignore += ['driverCameraState', 'managerState', 'driverMonitoringState']\n")
+                    
                     modified = True
-                i += 1
-                continue
+                    i += 2  # 跳过原始的2行
+                    continue
 
+            # 幂等性检查: 如果代码块已经被修改，则直接跳过
+            if stripped_line == "if True:":
+                if i + 1 < len(lines) and "ignore += ['driverCameraState', 'managerState', 'driverMonitoringState']" in lines[i+1]:
+                    new_lines.append(line)
+                    new_lines.append(lines[i+1])
+                    i += 2 # 跳过已修改的2行
+                    continue
+            
+            # 修改点 2: 注释其他报错
             lines_to_comment = [
-                "self.events.add(EventName.commIssue)", "self.events.add(EventName.commIssueAvgFreq)",
-                "self.events.add(EventName.cameraMalfunction)", 'cloudlog.event("process_not_running"',
-                'self.events.add(EventName.processNotRunning)', 'self.events.add(EventName.sensorDataInvalid)',
+                "self.events.add(EventName.commIssue)",
+                "self.events.add(EventName.commIssueAvgFreq)",
+                "self.events.add(EventName.cameraMalfunction)",
+                'cloudlog.event("process_not_running", not_running=not_running, error=True)',
+                'self.events.add(EventName.processNotRunning)',
+                'self.events.add(EventName.sensorDataInvalid)',
                 'self.events.add(EventName.noGps)',
             ]
             
-            if any(s in stripped_line for s in lines_to_comment) and not stripped_line.startswith(("pass", "#")):
+            is_line_to_comment = stripped_line in lines_to_comment
+
+            if is_line_to_comment and not line.lstrip().startswith(("pass", "#")):
                 indent = line[:len(line) - len(line.lstrip())]
                 new_lines.append(f"{indent}pass  # {stripped_line}\n")
                 modified = True
@@ -214,11 +235,12 @@ def modify_selfdrived_py(filename):
             with open(filename, 'w', encoding='utf-8') as f:
                 f.writelines(new_lines)
         
-        print_status(filename, modified, "DM/camera/comm issues and other alerts commented.")
+        print_status(filename, modified, "SIMULATION block and specified alerts modified.")
         return True
     except Exception as e:
         print(f"  Error modifying {filename}: {e}", file=sys.stderr)
         return False
+
 
 def modify_updated_py(filename):
     print(f"Modifying {filename}...")
@@ -237,7 +259,7 @@ def modify_updated_py(filename):
             stripped_line = line.strip()
 
             if stripped_line == 'elif failed_count > 0:':
-                if not (i > 0 and lines[i-1].strip() == "# 关闭长时间不联网限制"):
+                if i > 0 and not lines[i-1].strip() == "# 关闭长时间不联网限制":
                     indent = line[:len(line) - len(line.lstrip())]
                     new_lines.append(f"{indent}# 关闭长时间不联网限制\n")
                     for j in range(6):
@@ -331,6 +353,11 @@ if __name__ == "__main__":
 
     results = {}
     for name, (func, path) in modifications.items():
+        # 对于 prebuilt 版本，如果 C/C++ 头文件不存在，就跳过它
+        if name in ["hardware_h"] and not os.path.exists(path):
+            print(f"Skipping modification for non-existent file: {path}")
+            results[name] = True
+            continue
         results[name] = func(path)
 
     if all(results.values()):
