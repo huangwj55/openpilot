@@ -9,12 +9,11 @@ launch_script = os.path.join(repo_root, "launch_openpilot.sh")
 process_config = os.path.join(repo_root, "system/manager/process_config.py")
 long_mpc = os.path.join(repo_root, "selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py")
 pandad_py = os.path.join(repo_root, "selfdrive/pandad/pandad.py")
-pandad_cc = os.path.join(repo_root, "selfdrive/pandad/pandad.cc")
+# pandad.cc 的路径已移除
 hardwared_py = os.path.join(repo_root, "system/hardware/hardwared.py")
 hardware_h = os.path.join(repo_root, "system/hardware/tici/hardware.h")
 selfdrived_py = os.path.join(repo_root, "selfdrive/selfdrived/selfdrived.py")
 updated_py = os.path.join(repo_root, "system/updated/updated.py")
-# 🆕 新增：panda __init__.py 的文件路径
 panda_init_py = os.path.join(repo_root, "panda/python/__init__.py")
 
 
@@ -98,20 +97,7 @@ def modify_pandad_py(filename):
     print_status(filename, modified, "time.monotonic limit changed from 35 to 45.")
     return True
 
-def modify_pandad_cc(filename):
-    print(f"Modifying {filename}...")
-    if not os.path.exists(filename):
-        print(f"File not found: {filename}", file=sys.stderr)
-        return False
-    modified = False
-    for line in fileinput.input(filename, inplace=True, encoding="utf-8"):
-        if line.strip() == '#define MAX_IR_PANDA_VAL 50':
-            print("#define MAX_IR_PANDA_VAL 0\n", end='')
-            modified = True
-        else:
-            print(line, end='')
-    print_status(filename, modified, "MAX_IR_PANDA_VAL changed to 0.")
-    return True
+# modify_pandad_cc 函数已移除
 
 def modify_hardwared_py(filename):
     print(f"Modifying {filename}...")
@@ -129,7 +115,6 @@ def modify_hardwared_py(filename):
     print_status(filename, modified, "Offroad_StorageMissing alert commented with pass#.")
     return True
 
-# 🆕 新增：修改 panda __init__.py
 def modify_panda_init_py(filename):
     print(f"Modifying {filename}...")
     if not os.path.exists(filename):
@@ -336,12 +321,12 @@ if __name__ == "__main__":
         "process_config": (modify_process_config, process_config),
         "long_mpc": (modify_long_mpc, long_mpc),
         "pandad_py": (modify_pandad_py, pandad_py),
-        "pandad_cc": (modify_pandad_cc, pandad_cc),
+        # pandad_cc 的调用已移除
         "hardwared_py": (modify_hardwared_py, hardwared_py),
         "selfdrived": (modify_selfdrived_py, selfdrived_py),
         "updated": (modify_updated_py, updated_py),
         "hardware_h": (modify_hardware_h, hardware_h),
-        "panda_init": (modify_panda_init_py, panda_init_py), # 🆕 调用新增的函数
+        "panda_init": (modify_panda_init_py, panda_init_py),
     }
 
     results = {}
