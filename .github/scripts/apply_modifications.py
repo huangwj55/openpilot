@@ -179,17 +179,30 @@ def modify_selfdrived_py(filename):
             line = lines[i]
             stripped_line = line.strip()
 
-            # --- 增加 ignore 列表 ---
-            if "ignore = self.sensor_packets + self.gps_packets + ['alertDebug']" in stripped_line:
-                new_lines.append(line)
-                if not (i + 1 < len(lines) and "ignore +=" in lines[i+1]):
+            # 🆕 修改点 1: 修改 if SIMULATION 块
+            if stripped_line == "if SIMULATION:":
+                # 检查下一行是否是我们期望修改的行，确保上下文正确
+                if i + 1 < len(lines) and "ignore += ['driverCameraState', 'managerState']" in lines[i+1]:
                     indent = line[:len(line) - len(line.lstrip())]
-                    new_lines.append(f"{indent}    ignore += ['driverCameraState', 'managerState', 'driverMonitoringState']\n")
+                    next_indent = lines[i+1][:len(lines[i+1]) - len(lines[i+1].lstrip())]
+                    
+                    # 添加修改后的代码块
+                    new_lines.append(f"{indent}if True:\n")
+                    new_lines.append(f"{next_indent}ignore += ['driverCameraState', 'managerState', 'driverMonitoringState']\n")
+                    
                     modified = True
-                i += 1
-                continue
+                    i += 2  # 跳过原始的2行
+                    continue
 
-            # --- 注释 event.add 或 cloudlog.event ---
+            # 幂等性检查: 如果代码块已经被修改，则直接跳过
+            if stripped_line == "if True:":
+                if i + 1 < len(lines) and "ignore += ['driverCameraState', 'managerState', 'driverMonitoringState']" in lines[i+1]:
+                    new_lines.append(line)
+                    new_lines.append(lines[i+1])
+                    i += 2 # 跳过已修改的2行
+                    continue
+            
+            # 修改点 2: 注释其他报错
             lines_to_comment = [
                 "self.events.add(EventName.commIssue)",
                 "self.events.add(EventName.commIssueAvgFreq)",
@@ -200,9 +213,9 @@ def modify_selfdrived_py(filename):
                 'self.events.add(EventName.noGps)',
             ]
             
-            is_line_to_comment = any(s in stripped_line for s in lines_to_comment)
+            is_line_to_comment = stripped_line in lines_to_comment
 
-            if is_line_to_comment and not stripped_line.startswith(("pass", "#")):
+            if is_line_to_comment and not line.lstrip().startswith(("pass", "#")):
                 indent = line[:len(line) - len(line.lstrip())]
                 new_lines.append(f"{indent}pass  # {stripped_line}\n")
                 modified = True
@@ -215,7 +228,7 @@ def modify_selfdrived_py(filename):
             with open(filename, 'w', encoding='utf-8') as f:
                 f.writelines(new_lines)
         
-        print_status(filename, modified, "DM/camera/comm issues and other alerts commented.")
+        print_status(filename, modified, "SIMULATION block and specified alerts modified.")
         return True
     except Exception as e:
         print(f"  Error modifying {filename}: {e}", file=sys.stderr)
@@ -238,7 +251,7 @@ def modify_updated_py(filename):
             stripped_line = line.strip()
 
             if stripped_line == 'elif failed_count > 0:':
-                if not lines[i-1].strip() == "# 关闭长时间不联网限制":
+                if i > 0 and not lines[i-1].strip() == "# 关闭长时间不联网限制":
                     indent = line[:len(line) - len(line.lstrip())]
                     new_lines.append(f"{indent}# 关闭长时间不联网限制\n")
                     # Comment out the next 6 lines
