@@ -97,8 +97,6 @@ def modify_pandad_py(filename):
     print_status(filename, modified, "time.monotonic limit changed from 35 to 45.")
     return True
 
-# modify_pandad_cc 函数已移除
-
 def modify_hardwared_py(filename):
     print(f"Modifying {filename}...")
     if not os.path.exists(filename):
@@ -115,24 +113,47 @@ def modify_hardwared_py(filename):
     print_status(filename, modified, "Offroad_StorageMissing alert commented with pass#.")
     return True
 
+# ‼️ 修正后的 panda/__init__.py 修改函数
 def modify_panda_init_py(filename):
     print(f"Modifying {filename}...")
     if not os.path.exists(filename):
         print(f"File not found: {filename}", file=sys.stderr)
         return False
-    modified = False
-    original_part = "in cls.USB_VIDS"
-    new_part = "== 0xbbaa"
-    
-    for line in fileinput.input(filename, inplace=True, encoding="utf-8"):
-        if "if device.getVendorID() in cls.USB_VIDS" in line:
-            print(line.replace(original_part, new_part), end='')
-            modified = True
-        else:
-            print(line, end='')
-            
-    print_status(filename, modified, "Panda USB VID check modified.")
-    return True
+        
+    try:
+        with open(filename, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+
+        new_lines = []
+        modified = False
+        modified_once = False  # 确保只修改第一次出现的标志
+
+        target_line_str = "if device.getVendorID() in cls.USB_VIDS and device.getProductID() in cls.USB_PIDS:"
+        replacement_line_str = "    if device.getVendorID() == 0xbbaa and device.getProductID() in cls.USB_PIDS:"
+
+        for line in lines:
+            # 使用 strip() 来精确匹配行内容，忽略缩进和换行符
+            if not modified_once and line.strip() == target_line_str:
+                # 获取原始缩进
+                indent = line[:len(line) - len(line.lstrip())]
+                # 构建并添加新行
+                new_lines.append(f"{indent}{replacement_line_str}\n")
+                modified = True
+                modified_once = True
+            else:
+                # 如果不是目标行，或者已经修改过，则直接添加原始行
+                new_lines.append(line)
+
+        if modified:
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.writelines(new_lines)
+        
+        print_status(filename, modified, "First occurrence of Panda USB VID check modified.")
+        return True
+    except Exception as e:
+        print(f"  Error modifying {filename}: {e}", file=sys.stderr)
+        return False
+
 
 # --- 修改函数 (read/write 适用于多行、复杂或上下文相关的修改) ---
 
@@ -186,27 +207,25 @@ def modify_selfdrived_py(filename):
             line = lines[i]
             stripped_line = line.strip()
 
-            # 修改点 1: 修改 if SIMULATION 块
-            if stripped_line == "if SIMULATION:":
-                # 检查下一行是否是我们期望修改的行，确保上下文正确
-                if i + 1 < len(lines) and "ignore += ['driverCameraState', 'managerState']" in lines[i+1]:
-                    indent = line[:len(line) - len(line.lstrip())]
-                    next_indent = lines[i+1][:len(lines[i+1]) - len(lines[i+1].lstrip())]
-                    
-                    # 添加修改后的代码块
-                    new_lines.append(f"{indent}if True:\n")
-                    new_lines.append(f"{next_indent}ignore += ['driverCameraState', 'managerState', 'driverMonitoringState']\n")
-                    
-                    modified = True
-                    i += 2  # 跳过原始的2行
-                    continue
-
-            # 幂等性检查: 如果代码块已经被修改，则直接跳过
+            # 幂等性检查: 如果代码块已经被修改，则直接将修改后的代码块加入并跳过
             if stripped_line == "if True:":
                 if i + 1 < len(lines) and "ignore += ['driverCameraState', 'managerState', 'driverMonitoringState']" in lines[i+1]:
                     new_lines.append(line)
                     new_lines.append(lines[i+1])
                     i += 2 # 跳过已修改的2行
+                    continue
+            
+            # 修改点 1: 修改 if SIMULATION 块
+            if stripped_line == "if SIMULATION:":
+                if i + 1 < len(lines) and "ignore += ['driverCameraState', 'managerState']" in lines[i+1]:
+                    indent = line[:len(line) - len(line.lstrip())]
+                    next_indent = lines[i+1][:len(lines[i+1]) - len(lines[i+1].lstrip())]
+                    
+                    new_lines.append(f"{indent}if True:\n")
+                    new_lines.append(f"{next_indent}ignore += ['driverCameraState', 'managerState', 'driverMonitoringState']\n")
+                    
+                    modified = True
+                    i += 2
                     continue
             
             # 修改点 2: 注释其他报错
@@ -343,7 +362,6 @@ if __name__ == "__main__":
         "process_config": (modify_process_config, process_config),
         "long_mpc": (modify_long_mpc, long_mpc),
         "pandad_py": (modify_pandad_py, pandad_py),
-        # pandad_cc 的调用已移除
         "hardwared_py": (modify_hardwared_py, hardwared_py),
         "selfdrived": (modify_selfdrived_py, selfdrived_py),
         "updated": (modify_updated_py, updated_py),
@@ -353,7 +371,6 @@ if __name__ == "__main__":
 
     results = {}
     for name, (func, path) in modifications.items():
-        # 对于 prebuilt 版本，如果 C/C++ 头文件不存在，就跳过它
         if name in ["hardware_h"] and not os.path.exists(path):
             print(f"Skipping modification for non-existent file: {path}")
             results[name] = True
