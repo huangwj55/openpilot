@@ -25,7 +25,7 @@ jobs:
         run: |
           echo "Copying modification script to temporary location..."
           mkdir -p /tmp/workflow_scripts
-          cp .github/scripts/apply_modifications.py /tmp/workflow_scripts/apply_modifications.py
+          cp .github/scripts/apply_modifications_prebuilt.py /tmp/workflow_scripts/apply_modifications_prebuilt.py
           echo "Script copied."
 
       - name: Install Git LFS client and initialize
@@ -82,7 +82,7 @@ jobs:
       - name: Apply custom modifications using script from temp location
         run: |
           echo "Running Python script..."
-          python /tmp/workflow_scripts/apply_modifications.py
+          python /tmp/workflow_scripts/apply_modifications_prebuilt.py
           echo "Python script finished."
       - name: Remove workflow files from Git index
         run: |
