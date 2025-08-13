@@ -261,7 +261,7 @@ def modify_panda_init_py(filename):
     
     # 定义要查找的行和替换后的行
     target_line_content = "if device.getVendorID() in cls.USB_VIDS and device.getProductID() in cls.USB_PIDS:"
-    replacement_line_content = "    if device.getVendorID() == 0xbbaa and device.getProductID() in cls.USB_PIDS:"
+    replacement_line_content = "if device.getVendorID() == 0xbbaa and device.getProductID() in cls.USB_PIDS:"
 
     for line in fileinput.input(filename, inplace=True, encoding="utf-8"):
         stripped_line = line.strip()
