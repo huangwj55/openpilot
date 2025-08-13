@@ -13,8 +13,9 @@ pandad_py = os.path.join(repo_root, "selfdrive/pandad/pandad.py")
 hardwared_py = os.path.join(repo_root, "system/hardware/hardwared.py")
 selfdrived_py = os.path.join(repo_root, "selfdrive/selfdrived/selfdrived.py")
 updated_py = os.path.join(repo_root, "system/updated/updated.py")
-# 🆕 新增：pandad.cc 的文件路径
 pandad_cc = os.path.join(repo_root, "selfdrive/pandad/pandad.cc")
+# 🆕 新增：hardware.h 的文件路径
+hardware_h = os.path.join(repo_root, "system/hardware/tici/hardware.h")
 
 
 # --- Registration.py 修改 ---
@@ -23,36 +24,26 @@ def modify_registration(filename):
     if not os.path.exists(filename):
         print(f"File not found: {filename}", file=sys.stderr)
         return False
-
-    modified_imei1 = False
-    modified_imei2 = False
-    modified_alert = False
-
+    modified = False
     for line in fileinput.input(filename, inplace=True, encoding="utf-8"):
         line_out = line
         indent = line[:len(line) - len(line.lstrip())]
         stripped_line = line.strip()
-
         if stripped_line == "imei1: str | None = None":
             line_out = f"{indent}imei1='865420071781912'\n"
-            modified_imei1 = True
+            modified = True
         elif stripped_line == "imei2: str | None = None":
             line_out = f"{indent}imei2='865420071781904'\n"
-            modified_imei2 = True
+            modified = True
         elif 'set_offroad_alert("Offroad_UnofficialHardware"' in line and not line.lstrip().startswith("#"):
             line_out = f"{indent}#{line.lstrip()}"
             if not line_out.endswith('\n') and line.endswith('\n'):
                 line_out += '\n'
-            modified_alert = True
-        
+            modified = True
         print(line_out, end='')
-    
-    if modified_imei1 or modified_imei2 or modified_alert:
-        print(f"  IMEI1 changed: {modified_imei1}, IMEI2 changed: {modified_imei2}, Alert changed: {modified_alert}")
-        return True
-    
-    return True # 假设即使没有修改，文件也可能已经是目标状态
-
+    if modified:
+        print(f"  Modifications applied to {os.path.basename(filename)}.")
+    return True
 
 # --- launch_openpilot.sh 插入环境变量 ---
 def modify_launch_script(filename):
@@ -60,27 +51,19 @@ def modify_launch_script(filename):
     if not os.path.exists(filename):
         print(f"File not found: {filename}", file=sys.stderr)
         return False
-
     lines_to_insert = [
         "export API_HOST=https://api.konik.ai\n",
         "export ATHENA_HOST=wss://athena.konik.ai\n",
         "#export MAPS_HOST=https://api.konik.ai/maps\n",
         "export MAPBOX_TOKEN='pk.eyJ1IjoibXJvbmVjYyIsImEiOiJjbHhqbzlkbTYxNXUwMmtzZjdoMGtrZnVvIn0.SC7GNLtMFUGDgC2bAZcKzg'\n"
     ]
-
     with open(filename, 'r', encoding='utf-8') as f:
         content = f.readlines()
-
-    all_present = all(line_to_check in content for line_to_check in lines_to_insert)
-    
-    if all_present:
+    if all(line_to_check in content for line_to_check in lines_to_insert):
         print("  Environment lines already present, skipping insertion.")
         return True
-
     content_without_inserts = [l for l in content if l not in lines_to_insert]
-    
     idx = 1 if content_without_inserts and content_without_inserts[0].startswith("#!") else 0
-    
     new_content = content_without_inserts[:idx] + lines_to_insert + content_without_inserts[idx:]
     with open(filename, 'w', encoding='utf-8') as f:
         f.writelines(new_content)
@@ -97,11 +80,7 @@ def modify_process_config(filename):
     for line in fileinput.input(filename, inplace=True, encoding="utf-8"):
         indent = line[:len(line) - len(line.lstrip())]
         content_part = line.lstrip()
-        
-        if 'PythonProcess("dmonitoringmodeld"' in line and not content_part.startswith("#"):
-            print(f"{indent}#{content_part}", end='')
-            modified = True
-        elif 'PythonProcess("dmonitoringd"' in line and not content_part.startswith("#"):
+        if ('PythonProcess("dmonitoringmodeld"' in line or 'PythonProcess("dmonitoringd"' in line) and not content_part.startswith("#"):
             print(f"{indent}#{content_part}", end='')
             modified = True
         else:
@@ -156,190 +135,122 @@ def modify_hardwared_py(filename):
     modified = False
     for line in fileinput.input(filename, inplace=True, encoding="utf-8"):
         target_str = 'set_offroad_alert_if_changed("Offroad_StorageMissing", True)'
-        if target_str in line and not line.lstrip().startswith("#") and not line.lstrip().startswith("pass#"):
+        if target_str in line and not line.lstrip().startswith(("#", "pass#")):
             indent = line[:len(line) - len(line.lstrip())]
-            original_eol = "\n" if line.endswith("\n") else ""
-            line = f"{indent}pass#{target_str}{original_eol}"
+            line = f"{indent}pass#{line.lstrip()}"
             modified = True
         print(line, end='')
     if modified:
         print(f"  '{target_str}' commented with pass#.")
     return True
 
-# 🆕 修改 selfdrived.py 以关闭 DM 相关报错
+# 🆕 修改 selfdrived.py
 def modify_selfdrived_py(filename):
-    print(f"Modifying {filename} to close DM errors and other alerts...")
+    # This function is complex, so read/write is safer
+    print(f"Modifying {filename}...")
     if not os.path.exists(filename):
         print(f"File not found: {filename}", file=sys.stderr)
         return False
-
     try:
         with open(filename, 'r', encoding='utf-8') as f:
             lines = f.readlines()
+        
+        # Simple idempotency check
+        content = "".join(lines)
+        if "ignore += ['driverCameraState', 'managerState', 'driverMonitoringState']" in content and \
+           "pass # self.events.add(EventName.commIssue)" in content:
+            print("  selfdrived.py already appears to be modified.")
+            return True
 
         new_lines = []
         modified = False
-        
         i = 0
         while i < len(lines):
             line = lines[i]
-            indent = line[:len(line) - len(line.lstrip())]
-            stripped_line = line.strip()
-            original_eol = "\n" if line.endswith("\n") else ""
-            line_modified_in_this_iter = False 
+            # Process lines here... this logic can be complex.
+            # For simplicity, let's use a simpler but effective string replacement method
+            # This is less robust to formatting changes but sufficient for this script's purpose.
+            pass
+        
+        # A simpler, more direct approach using string replacement
+        with open(filename, 'r', encoding='utf-8') as f:
+            content = f.read()
 
-            # --- 修改点 1: 增加 ignore 列表 ---
-            target_line_1 = "ignore = self.sensor_packets + self.gps_packets + ['alertDebug']"
-            line_to_add_1 = "ignore += ['driverCameraState', 'managerState', 'driverMonitoringState']"
-            
-            if target_line_1 in stripped_line:
-                new_lines.append(line) 
-                if i + 1 < len(lines) and line_to_add_1.strip() in lines[i+1].strip():
-                    pass 
-                else:
-                    new_lines.append(f"{indent}{line_to_add_1}\n")
-                    modified = True
-                line_modified_in_this_iter = True
-            
-            # --- 修改点 2: 注释 commIssue ---
-            elif "if not self.sm.all_alive():" in stripped_line:
-                new_lines.append(line)
-                if i + 1 < len(lines) and "self.events.add(EventName.commIssue)" in lines[i+1]:
-                    next_line_indent = lines[i+1][:len(lines[i+1]) - len(lines[i+1].lstrip())]
-                    new_lines.append(f"{next_line_indent}pass # {lines[i+1].strip()}\n")
-                    i += 1 
-                    modified = True
-                line_modified_in_this_iter = True
-            
-            elif "elif not self.sm.all_freq_ok():" in stripped_line:
-                new_lines.append(line)
-                if i + 1 < len(lines) and "self.events.add(EventName.commIssueAvgFreq)" in lines[i+1]:
-                    next_line_indent = lines[i+1][:len(lines[i+1]) - len(lines[i+1].lstrip())]
-                    new_lines.append(f"{next_line_indent}pass # {lines[i+1].strip()}\n")
-                    i += 1
-                    modified = True
-                line_modified_in_this_iter = True
-
-            elif stripped_line == "else:" and i + 1 < len(lines) and "self.events.add(EventName.commIssue)" in lines[i+1]:
-                new_lines.append(line)
-                next_line_indent = lines[i+1][:len(lines[i+1]) - len(lines[i+1].lstrip())]
-                new_lines.append(f"{next_line_indent}pass # {lines[i+1].strip()}\n")
-                i += 1
-                modified = True
-                line_modified_in_this_iter = True
-
-            # --- 修改点 3: 注释 cameraMalfunction ---
-            elif "if not self.sm.all_alive(self.camera_packets):" in stripped_line:
-                 new_lines.append(line)
-                 if i + 1 < len(lines) and "self.events.add(EventName.cameraMalfunction)" in lines[i+1]:
-                    next_line_indent = lines[i+1][:len(lines[i+1]) - len(lines[i+1].lstrip())]
-                    new_lines.append(f"{next_line_indent}pass # {lines[i+1].strip()}\n")
-                    i += 1
-                    modified = True
-                 line_modified_in_this_iter = True
-            
-            # --- 新增修改点 ---
-            elif stripped_line == 'cloudlog.event("process_not_running", not_running=not_running, error=True)':
-                if not line.lstrip().startswith("pass#"):
-                    new_lines.append(f"{indent}pass#{stripped_line}{original_eol}")
-                    modified = True
-                else: 
-                    new_lines.append(line)
-                line_modified_in_this_iter = True
-
-            elif stripped_line == 'self.events.add(EventName.processNotRunning)':
-                if not line.lstrip().startswith("pass#"):
-                    new_lines.append(f"{indent}pass#{stripped_line}{original_eol}")
-                    modified = True
-                else:
-                    new_lines.append(line)
-                line_modified_in_this_iter = True
-
-            elif stripped_line == 'self.events.add(EventName.sensorDataInvalid)':
-                if not line.lstrip().startswith("pass#"):
-                    new_lines.append(f"{indent}pass#{stripped_line}{original_eol}")
-                    modified = True
-                else:
-                    new_lines.append(line)
-                line_modified_in_this_iter = True
-
-            elif stripped_line == 'self.events.add(EventName.noGps)':
-                if not line.lstrip().startswith("pass#"):
-                    new_lines.append(f"{indent}pass#{stripped_line}{original_eol}")
-                    modified = True
-                else:
-                    new_lines.append(line)
-                line_modified_in_this_iter = True
-
-            if not line_modified_in_this_iter:
-                new_lines.append(line)
-            
-            i += 1
-
-        if modified:
+        replacements = {
+            # Add to ignore list
+            "ignore = self.sensor_packets + self.gps_packets + ['alertDebug']":
+                "ignore = self.sensor_packets + self.gps_packets + ['alertDebug']\n"
+                "    ignore += ['driverCameraState', 'managerState', 'driverMonitoringState']",
+            # Pass on various events
+            "self.events.add(EventName.commIssue)": "pass # self.events.add(EventName.commIssue)",
+            "self.events.add(EventName.commIssueAvgFreq)": "pass # self.events.add(EventName.commIssueAvgFreq)",
+            "self.events.add(EventName.cameraMalfunction)": "pass # self.events.add(EventName.cameraMalfunction)",
+            'cloudlog.event("process_not_running", not_running=not_running, error=True)': 'pass#cloudlog.event("process_not_running", not_running=not_running, error=True)',
+            'self.events.add(EventName.processNotRunning)': 'pass#self.events.add(EventName.processNotRunning)',
+            'self.events.add(EventName.sensorDataInvalid)': 'pass#self.events.add(EventName.sensorDataInvalid)',
+            'self.events.add(EventName.noGps)': 'pass#self.events.add(EventName.noGps)',
+        }
+        
+        original_content = content
+        for find, replace in replacements.items():
+            content = content.replace(find, replace)
+        
+        if content != original_content:
+            modified = True
             with open(filename, 'w', encoding='utf-8') as f:
-                f.writelines(new_lines)
+                f.write(content)
             print("  selfdrived.py modified to ignore DM/camera/comm issues and other specified alerts.")
         else:
-            print("  selfdrived.py already in desired state for specified alerts.")
-
+            print("  selfdrived.py already in desired state.")
         return True
 
     except Exception as e:
         print(f"  Error modifying {filename}: {e}", file=sys.stderr)
         return False
 
-# 🆕 修改 updated.py 以关闭长时间不联网限制
+
+# 🆕 修改 updated.py
 def modify_updated_py(filename):
-    print(f"Modifying {filename} to disable no-connectivity limit...")
+    print(f"Modifying {filename}...")
     if not os.path.exists(filename):
         print(f"File not found: {filename}", file=sys.stderr)
         return False
-
     try:
         with open(filename, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-
-        new_lines = []
-        modified = False
-        in_block_to_comment = False
-        lines_to_comment_count = 0
+            content = f.read()
         
-        # Check if already modified
-        content_str = "".join(lines)
-        if '# 关闭长时间不联网限制' in content_str and '# elif failed_count > 0:' in content_str:
+        original_block = """elif failed_count > 0:
+      if dt_uptime_onroad > HOURS_NO_CONNECTIVITY_MAX and dt_route_count > ROUTES_NO_CONNECTIVITY_MAX:
+        set_offroad_alert("Offroad_ConnectivityNeeded", True)
+      elif dt_uptime_onroad > HOURS_NO_CONNECTIVITY_PROMPT and dt_route_count > ROUTES_NO_CONNECTIVITY_PROMPT:
+        remaining = max(HOURS_NO_CONNECTIVITY_MAX - dt_uptime_onroad, 1)
+        set_offroad_alert("Offroad_ConnectivityNeededPrompt", True, extra_text=f"{remaining} hour{'' if remaining == 1 else 's'}.")"""
+
+        replacement_block = """# 关闭长时间不联网限制
+    # elif failed_count > 0:
+    #   if dt_uptime_onroad > HOURS_NO_CONNECTIVITY_MAX and dt_route_count > ROUTES_NO_CONNECTIVITY_MAX:
+    #     set_offroad_alert("Offroad_ConnectivityNeeded", True)
+    #   elif dt_uptime_onroad > HOURS_NO_CONNECTIVITY_PROMPT and dt_route_count > ROUTES_NO_CONNECTIVITY_PROMPT:
+    #     remaining = max(HOURS_NO_CONNECTIVITY_MAX - dt_uptime_onroad, 1)
+    #     set_offroad_alert("Offroad_ConnectivityNeededPrompt", True, extra_text=f"{remaining} hour{'' if remaining == 1 else 's'}.")"""
+        
+        if replacement_block in content:
             print("  Connectivity limit block already commented.")
             return True
-
-        for line in lines:
-            stripped_line = line.strip()
-
-            if in_block_to_comment:
-                new_lines.append("#" + line)
-                lines_to_comment_count -= 1
-                if lines_to_comment_count == 0:
-                    in_block_to_comment = False
-            elif stripped_line == 'elif failed_count > 0:':
-                new_lines.append(f"{line.split('elif')[0]}# 关闭长时间不联网限制\n")
-                new_lines.append("#" + line)
-                in_block_to_comment = True
-                lines_to_comment_count = 5  # 5 more lines to comment
-                modified = True
-            else:
-                new_lines.append(line)
-
-        if modified:
-            with open(filename, 'w', encoding='utf-8') as f:
-                f.writelines(new_lines)
-            print("  Connectivity limit block commented out.")
         
+        new_content = content.replace(original_block, replacement_block)
+
+        if new_content != content:
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(new_content)
+            print("  Connectivity limit block commented out.")
         return True
 
     except Exception as e:
         print(f"  Error modifying {filename}: {e}", file=sys.stderr)
         return False
 
-# 🆕 新增：修改 pandad.cc 以关闭 IR
+# 🆕 修改 pandad.cc
 def modify_pandad_cc(filename):
     print(f"Modifying {filename}...")
     if not os.path.exists(filename):
@@ -356,6 +267,65 @@ def modify_pandad_cc(filename):
         print("  MAX_IR_PANDA_VAL changed to 0.")
     return True
 
+# 🆕 新增：修改 hardware.h 以禁用 IR Power
+def modify_hardware_h(filename):
+    print(f"Modifying {filename}...")
+    if not os.path.exists(filename):
+        print(f"File not found: {filename}", file=sys.stderr)
+        return False
+    
+    try:
+        with open(filename, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+
+        new_lines = []
+        modified = False
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+
+            # 修改点 1: 插入 (void)percent;
+            if "static void set_ir_power(int percent) {" in line:
+                new_lines.append(line)
+                # 幂等性检查: 如果下一行不是我们要添加的内容，则添加它
+                if not (i + 1 < len(lines) and "(void)percent;" in lines[i+1]):
+                    indent = lines[i+1][:len(lines[i+1]) - len(lines[i+1].lstrip())] if i + 1 < len(lines) else "    "
+                    new_lines.append(f"{indent}(void)percent; // 忽略传入参数，避免编译器警告\n")
+                    modified = True
+                i += 1
+                continue
+
+            # 修改点 2: 替换 brightness 设置逻辑
+            elif "int value = util::map_val" in line:
+                # 幂等性检查: 如果前一行是我们的注释，说明已经修改过了
+                if not (len(new_lines) > 0 and "// 强制设为 0" in new_lines[-1]):
+                    indent = line[:len(line) - len(line.lstrip())]
+                    new_lines.append(f"{indent}// 强制设为 0\n")
+                    new_lines.append(f'{indent}std::ofstream("/sys/class/leds/led:switch_2/brightness") << 0 << "\\n";\n')
+                    new_lines.append(f'{indent}std::ofstream("/sys/class/leds/led:torch_2/brightness") << 0 << "\\n";\n')
+                    new_lines.append(f'{indent}std::ofstream("/sys/class/leds/led:switch_2/brightness") << 0 << "\\n";\n')
+                    modified = True
+                
+                # 跳过原始的4行代码
+                i += 4
+                continue
+
+            # 默认情况: 直接添加原始行
+            new_lines.append(line)
+            i += 1
+        
+        if modified:
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.writelines(new_lines)
+            print("  IR power logic in hardware.h has been modified.")
+        else:
+            print("  hardware.h already in the desired state.")
+        
+        return True
+
+    except Exception as e:
+        print(f"  Error modifying {filename}: {e}", file=sys.stderr)
+        return False
 
 # --- 主入口 ---
 print("Running all modifications...")
@@ -369,7 +339,8 @@ results = [
     modify_hardwared_py(hardwared_py),
     modify_selfdrived_py(selfdrived_py),
     modify_updated_py(updated_py),
-    modify_pandad_cc(pandad_cc), # 🆕 调用新增的函数
+    modify_pandad_cc(pandad_cc),
+    modify_hardware_h(hardware_h), # 🆕 调用新增的函数
 ]
 
 if all(results):
@@ -379,7 +350,7 @@ else:
     print("❌ Some modifications may have failed or were not applicable.", file=sys.stderr)
     failed_mods = [func_name for func_name, res_val in zip(
         ["registration", "launch_script", "process_config", "long_mpc", "pandad_py", 
-         "hardwared_py", "selfdrived", "updated", "pandad_cc"], # 🆕 增加到错误报告列表
+         "hardwared_py", "selfdrived", "updated", "pandad_cc", "hardware_h"], # 🆕 增加到错误报告列表
         results
     ) if not res_val]
     if failed_mods:
