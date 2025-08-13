@@ -11,8 +11,9 @@ process_config = os.path.join(repo_root, "system/manager/process_config.py")
 long_mpc = os.path.join(repo_root, "selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py")
 pandad_py = os.path.join(repo_root, "selfdrive/pandad/pandad.py")
 hardwared_py = os.path.join(repo_root, "system/hardware/hardwared.py")
-# 🆕 新增：selfdrived.py 的文件路径
 selfdrived_py = os.path.join(repo_root, "selfdrive/selfdrived/selfdrived.py")
+# 🆕 新增：panda/python/__init__.py 的文件路径
+panda_init_py = os.path.join(repo_root, "panda/python/__init__.py")
 
 
 # --- Registration.py 修改 ---
@@ -164,14 +165,13 @@ def modify_hardwared_py(filename):
         print(f"  '{target_str}' commented with pass#.")
     return True
 
-# 🆕 新增：修改 selfdrived.py 以关闭 DM 相关报错
+# 🆕 修改 selfdrived.py 以关闭 DM 相关报错
 def modify_selfdrived_py(filename):
     print(f"Modifying {filename} to close DM errors...")
     if not os.path.exists(filename):
         print(f"File not found: {filename}", file=sys.stderr)
         return False
 
-    # 由于修改包含添加行和替换多行，使用 read/write 模式比 fileinput 更稳妥
     try:
         with open(filename, 'r', encoding='utf-8') as f:
             lines = f.readlines()
@@ -219,7 +219,7 @@ def modify_selfdrived_py(filename):
                     modified = True
 
             # else: (针对 commIssue 的 else)
-            elif stripped_line == "else:" and "commIssue" in lines[i+1]:
+            elif stripped_line == "else:" and i + 1 < len(lines) and "self.events.add(EventName.commIssue)" in lines[i+1]:
                  if i + 1 < len(lines) and "self.events.add(EventName.commIssue)" in lines[i+1]:
                     next_line_indent = lines[i+1][:len(lines[i+1]) - len(lines[i+1].lstrip())]
                     new_lines.append(f"{next_line_indent}pass # {lines[i+1].strip()}\n")
@@ -248,17 +248,50 @@ def modify_selfdrived_py(filename):
         print(f"  Error modifying {filename}: {e}", file=sys.stderr)
         return False
 
+
+# 🆕 新增：修改 panda/python/__init__.py
+def modify_panda_init_py(filename):
+    print(f"Modifying {filename}...")
+    if not os.path.exists(filename):
+        print(f"File not found: {filename}", file=sys.stderr)
+        return False
+
+    modified = False
+    # 定义要查找的行和替换后的行
+    target_line_content = "if device.getVendorID() in cls.USB_VIDS and device.getProductID() in cls.USB_PIDS:"
+    replacement_line_content = "if device.getVendorID() == 0xbbaa and device.getProductID() in cls.USB_PIDS:"
+
+    for line in fileinput.input(filename, inplace=True, encoding="utf-8"):
+        stripped_line = line.strip()
+        
+        if stripped_line == target_line_content:
+            # 保持原始缩进
+            indent = line[:len(line) - len(line.lstrip())]
+            # 打印替换后的行，并确保保留原始行末的换行符
+            print(f"{indent}{replacement_line_content}\n", end='')
+            modified = True
+        else:
+            print(line, end='')
+
+    if modified:
+        print(f"  Changed USB_VIDS check to 0xbbaa in {filename}.")
+    else:
+        # 如果没有修改，表示文件可能已经处于目标状态
+        print(f"  USB_VIDS check already set to 0xbbaa or target line not found in {filename}.")
+    return True
+
 # --- 主入口 ---
 print("Running all modifications...")
 
 results = [
     modify_registration(registration_file),
     modify_launch_script(launch_script),
-    modify_process_config(process_config), # 确保这个函数也被调用
+    modify_process_config(process_config),
     modify_long_mpc(long_mpc),
     modify_pandad_py(pandad_py),
     modify_hardwared_py(hardwared_py),
-    modify_selfdrived_py(selfdrived_py), # 🆕 调用新增的函数
+    modify_selfdrived_py(selfdrived_py),
+    modify_panda_init_py(panda_init_py), # 🆕 调用新增的函数
 ]
 
 if all(results):
@@ -267,7 +300,7 @@ if all(results):
 else:
     print("❌ Some modifications may have failed or were not applicable.", file=sys.stderr)
     failed_mods = [func_name for func_name, res_val in zip(
-        ["registration", "launch_script", "process_config", "long_mpc", "pandad_py", "hardwared_py", "selfdrived"], # 🆕 增加到错误报告列表
+        ["registration", "launch_script", "process_config", "long_mpc", "pandad_py", "hardwared_py", "selfdrived", "panda_init"], # 🆕 增加到错误报告列表
         results
     ) if not res_val]
     if failed_mods:
