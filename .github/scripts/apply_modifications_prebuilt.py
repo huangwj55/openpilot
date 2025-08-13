@@ -12,7 +12,7 @@ long_mpc = os.path.join(repo_root, "selfdrive/controls/lib/longitudinal_mpc_lib/
 pandad_py = os.path.join(repo_root, "selfdrive/pandad/pandad.py")
 hardwared_py = os.path.join(repo_root, "system/hardware/hardwared.py")
 selfdrived_py = os.path.join(repo_root, "selfdrive/selfdrived/selfdrived.py")
-# 🆕 新增：panda/python/__init__.py 的文件路径
+# 新增：panda/python/__init__.py 的文件路径
 panda_init_py = os.path.join(repo_root, "panda/python/__init__.py")
 
 
@@ -249,7 +249,7 @@ def modify_selfdrived_py(filename):
         return False
 
 
-# 🆕 新增：修改 panda/python/__init__.py
+# 🆕 新增：修改 panda/python/__init__.py (只修改第一次出现的位置)
 def modify_panda_init_py(filename):
     print(f"Modifying {filename}...")
     if not os.path.exists(filename):
@@ -257,6 +257,8 @@ def modify_panda_init_py(filename):
         return False
 
     modified = False
+    found_and_modified_once = False # 标志位：是否已修改第一次出现的位置
+    
     # 定义要查找的行和替换后的行
     target_line_content = "if device.getVendorID() in cls.USB_VIDS and device.getProductID() in cls.USB_PIDS:"
     replacement_line_content = "    if device.getVendorID() == 0xbbaa and device.getProductID() in cls.USB_PIDS:"
@@ -264,20 +266,23 @@ def modify_panda_init_py(filename):
     for line in fileinput.input(filename, inplace=True, encoding="utf-8"):
         stripped_line = line.strip()
         
-        if stripped_line == target_line_content:
+        # 只有当行匹配目标内容且尚未修改过第一次出现的位置时，才进行修改
+        if stripped_line == target_line_content and not found_and_modified_once:
             # 保持原始缩进
             indent = line[:len(line) - len(line.lstrip())]
             # 打印替换后的行，并确保保留原始行末的换行符
             print(f"{indent}{replacement_line_content}\n", end='')
             modified = True
+            found_and_modified_once = True # 设置标志位，表示已完成第一次修改
         else:
+            # 如果不匹配目标行，或者已经修改过第一次出现的位置，则原样打印该行
             print(line, end='')
 
     if modified:
-        print(f"  Changed USB_VIDS check to 0xbbaa in {filename}.")
+        print(f"  Changed first occurrence of USB_VIDS check to 0xbbaa in {filename}.")
     else:
-        # 如果没有修改，表示文件可能已经处于目标状态
-        print(f"  USB_VIDS check already set to 0xbbaa or target line not found in {filename}.")
+        # 如果没有修改，表示文件可能已经处于目标状态，或者目标行从未出现
+        print(f"  First occurrence of USB_VIDS check already set to 0xbbaa or target line not found in {filename}.")
     return True
 
 # --- 主入口 ---
@@ -291,7 +296,7 @@ results = [
     modify_pandad_py(pandad_py),
     modify_hardwared_py(hardwared_py),
     modify_selfdrived_py(selfdrived_py),
-    modify_panda_init_py(panda_init_py), # 🆕 调用新增的函数
+    modify_panda_init_py(panda_init_py), # 调用新增的函数
 ]
 
 if all(results):
@@ -300,7 +305,7 @@ if all(results):
 else:
     print("❌ Some modifications may have failed or were not applicable.", file=sys.stderr)
     failed_mods = [func_name for func_name, res_val in zip(
-        ["registration", "launch_script", "process_config", "long_mpc", "pandad_py", "hardwared_py", "selfdrived", "panda_init"], # 🆕 增加到错误报告列表
+        ["registration", "launch_script", "process_config", "long_mpc", "pandad_py", "hardwared_py", "selfdrived", "panda_init"], # 增加到错误报告列表
         results
     ) if not res_val]
     if failed_mods:
