@@ -1,6 +1,7 @@
 import os
 import sys
 import fileinput
+import json # 导入json库用于处理agnos.json
 
 # --- 文件路径 ---
 repo_root = os.environ.get('GITHUB_WORKSPACE', '.')  # 默认为当前目录
@@ -14,6 +15,7 @@ hardwared_py = os.path.join(repo_root, "system/hardware/hardwared.py")
 hardware_h = os.path.join(repo_root, "system/hardware/tici/hardware.h")
 selfdrived_py = os.path.join(repo_root, "selfdrive/selfdrived/selfdrived.py")
 updated_py = os.path.join(repo_root, "system/updated/updated.py")
+agnos_json = os.path.join(repo_root, "system/hardware/tici/agnos.json") # 新增 agnos.json 路径
 
 
 # --- Helper for status printing ---
@@ -146,10 +148,12 @@ def modify_launch_script(filename):
             "export MAPBOX_TOKEN='pk.eyJ1IjoibXJvbmVjYyIsImEiOiJjbHhqbzlkbTYxNXUwMmtzZjdoMGtrZnVvIn0.SC7GNLtMFUGDgC2bAZcKzg'\n"
         ]
 
+        # 检查是否所有行都已存在，如果都存在则认为已经修改过
         if all(l in lines for l in lines_to_insert):
             print_status(filename, False, "")
             return True
 
+        # 过滤掉旧的可能存在的插入行，以实现幂等性
         content_without_inserts = [l for l in lines if l not in lines_to_insert]
         idx = 1 if content_without_inserts and content_without_inserts[0].startswith("#!") else 0
         new_content = content_without_inserts[:idx] + lines_to_insert + content_without_inserts[idx:]
@@ -294,6 +298,7 @@ def modify_hardware_h(filename):
 
             if "static void set_ir_power(int percent) {" in line:
                 new_lines.append(line)
+                # 检查下一行是否是 (void)percent; 如果不是，则添加
                 if not (i + 1 < len(lines) and "(void)percent;" in lines[i+1]):
                     indent = "    " if not lines[i+1].startswith(" ") else lines[i+1][:len(lines[i+1]) - len(lines[i+1].lstrip())]
                     new_lines.append(f"{indent}(void)percent; // 忽略传入参数，避免编译器警告\n")
@@ -302,6 +307,7 @@ def modify_hardware_h(filename):
                 continue
 
             elif "int value = util::map_val" in line:
+                # 检查前面是否已经添加了注释和强制设置为0的代码
                 if not (len(new_lines) > 0 and "// 强制设为 0" in new_lines[-1]):
                     indent = line[:len(line) - len(line.lstrip())]
                     new_lines.append(f"{indent}// 强制设为 0\n")
@@ -309,7 +315,7 @@ def modify_hardware_h(filename):
                     new_lines.append(f'{indent}std::ofstream("/sys/class/leds/led:torch_2/brightness") << 0 << "\\n";\n')
                     new_lines.append(f'{indent}std::ofstream("/sys/class/leds/led:switch_2/brightness") << 0 << "\\n";\n')
                     modified = True
-                i += 4 # Skip original 4 lines
+                i += 4 # 跳过原始的4行
                 continue
 
             new_lines.append(line)
@@ -326,6 +332,49 @@ def modify_hardware_h(filename):
         print(f"  Error modifying {filename}: {e}", file=sys.stderr)
         return False
 
+def modify_agnos_json(filename):
+    print(f"Modifying {filename}...")
+    if not os.path.exists(filename):
+        print(f"File not found: {filename}", file=sys.stderr)
+        return False
+    
+    modified = False
+    old_prefix = "https://commadist.azureedge.net/agnosupdate/"
+    new_prefix = "https://az.hwj55.cn:56680/"
+
+    try:
+        with open(filename, 'r', encoding='utf-8') as f:
+            agnos_data = json.load(f) # 读取JSON数据
+        
+        for item in agnos_data:
+            # 修改主 URL
+            if "url" in item and item["url"].startswith(old_prefix):
+                item["url"] = item["url"].replace(old_prefix, new_prefix, 1) # 替换第一个匹配项
+                modified = True
+            
+            # 修改 alt 字段中的 URL (如果存在)
+            if "alt" in item and isinstance(item["alt"], dict) and "url" in item["alt"]:
+                if item["alt"]["url"].startswith(old_prefix):
+                    item["alt"]["url"] = item["alt"]["url"].replace(old_prefix, new_prefix, 1)
+                    modified = True
+        
+        if modified:
+            with open(filename, 'w', encoding='utf-8') as f:
+                # 使用 indent=2 使输出的JSON格式化，更易读
+                json.dump(agnos_data, f, indent=2, ensure_ascii=False) 
+            print_status(filename, modified, "Agnos download URLs updated.")
+        else:
+            print_status(filename, modified, "")
+        
+        return True
+    except json.JSONDecodeError as e:
+        print(f"  Error parsing JSON in {filename}: {e}", file=sys.stderr)
+        return False
+    except Exception as e:
+        print(f"  Error modifying {filename}: {e}", file=sys.stderr)
+        return False
+
+
 # --- 主入口 ---
 if __name__ == "__main__":
     print("Running all modifications...")
@@ -341,6 +390,7 @@ if __name__ == "__main__":
         "selfdrived": (modify_selfdrived_py, selfdrived_py),
         "updated": (modify_updated_py, updated_py),
         "hardware_h": (modify_hardware_h, hardware_h),
+        "agnos_json": (modify_agnos_json, agnos_json), # 新增 agnos.json 修改项
     }
 
     results = {}
