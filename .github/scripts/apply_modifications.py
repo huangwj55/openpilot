@@ -2,6 +2,8 @@ import os
 import sys
 import fileinput
 import json # 导入json库用于处理agnos.json
+import urllib.request # 导入urllib库用于下载文件
+import urllib.error   # 导入urllib库用于处理错误
 
 # --- 文件路径 ---
 repo_root = os.environ.get('GITHUB_WORKSPACE', '.')  # 默认为当前目录
@@ -15,15 +17,52 @@ hardwared_py = os.path.join(repo_root, "system/hardware/hardwared.py")
 hardware_h = os.path.join(repo_root, "system/hardware/tici/hardware.h")
 selfdrived_py = os.path.join(repo_root, "selfdrive/selfdrived/selfdrived.py")
 updated_py = os.path.join(repo_root, "system/updated/updated.py")
-agnos_json = os.path.join(repo_root, "system/hardware/tici/agnos.json") # 新增 agnos.json 路径
-
+agnos_json = os.path.join(repo_root, "system/hardware/tici/agnos.json")
+lfs_config = os.path.join(repo_root, ".lfsconfig") # 新增 .lfsconfig 路径
 
 # --- Helper for status printing ---
 def print_status(filename, modified, message_if_modified, message_if_not_modified="already in desired state"):
+    # 如果文件名是URL，则只显示基础名称
+    display_name = os.path.basename(filename) if not filename.startswith("http") else filename.split('/')[-1]
+    
     if modified:
         print(f"  {message_if_modified}")
     else:
-        print(f"  {os.path.basename(filename)} {message_if_not_modified}.")
+        print(f"  {display_name} {message_if_not_modified}.")
+
+
+# --- 下载函数 ---
+def download_lfsconfig(filename):
+    """
+    从指定URL下载.lfsconfig文件并保存到仓库根目录.
+    """
+    url = "https://github.com/sunnypilot/sunnypilot/raw/refs/heads/tn/.lfsconfig"
+    print(f"Downloading {os.path.basename(filename)} from {url}...")
+    
+    try:
+        # 发送请求并获取响应内容
+        with urllib.request.urlopen(url) as response:
+            if response.status != 200:
+                print(f"  Error: Failed to download file. Status code: {response.status}", file=sys.stderr)
+                return False
+            content = response.read()
+        
+        # 将内容写入本地文件 (覆盖)
+        with open(filename, 'wb') as f:
+            f.write(content)
+            
+        print_status(url, True, f"Successfully downloaded and saved to {os.path.basename(filename)}.")
+        return True
+
+    except urllib.error.URLError as e:
+        print(f"  Error downloading file: {e.reason}", file=sys.stderr)
+        return False
+    except IOError as e:
+        print(f"  Error writing to file {filename}: {e}", file=sys.stderr)
+        return False
+    except Exception as e:
+        print(f"  An unexpected error occurred during download: {e}", file=sys.stderr)
+        return False
 
 
 # --- 修改函数 (fileinput 适用于简单的单行替换) ---
@@ -31,7 +70,7 @@ def print_status(filename, modified, message_if_modified, message_if_not_modifie
 def modify_registration(filename):
     print(f"Modifying {filename}...")
     if not os.path.exists(filename):
-        print(f"File not found: {filename}", file=sys.stderr)
+        print(f"  File not found: {filename}", file=sys.stderr)
         return False
     modified = False
     for line in fileinput.input(filename, inplace=True, encoding="utf-8"):
@@ -53,7 +92,7 @@ def modify_registration(filename):
 def modify_process_config(filename):
     print(f"Modifying {filename}...")
     if not os.path.exists(filename):
-        print(f"File not found: {filename}", file=sys.stderr)
+        print(f"  File not found: {filename}", file=sys.stderr)
         return False
     modified = False
     for line in fileinput.input(filename, inplace=True, encoding="utf-8"):
@@ -68,7 +107,7 @@ def modify_process_config(filename):
 def modify_long_mpc(filename):
     print(f"Modifying {filename}...")
     if not os.path.exists(filename):
-        print(f"File not found: {filename}", file=sys.stderr)
+        print(f"  File not found: {filename}", file=sys.stderr)
         return False
     modified = False
     for line in fileinput.input(filename, inplace=True, encoding="utf-8"):
@@ -86,7 +125,7 @@ def modify_long_mpc(filename):
 def modify_pandad_py(filename):
     print(f"Modifying {filename}...")
     if not os.path.exists(filename):
-        print(f"File not found: {filename}", file=sys.stderr)
+        print(f"  File not found: {filename}", file=sys.stderr)
         return False
     modified = False
     for line in fileinput.input(filename, inplace=True, encoding="utf-8"):
@@ -101,7 +140,7 @@ def modify_pandad_py(filename):
 def modify_pandad_cc(filename):
     print(f"Modifying {filename}...")
     if not os.path.exists(filename):
-        print(f"File not found: {filename}", file=sys.stderr)
+        print(f"  File not found: {filename}", file=sys.stderr)
         return False
     modified = False
     for line in fileinput.input(filename, inplace=True, encoding="utf-8"):
@@ -116,7 +155,7 @@ def modify_pandad_cc(filename):
 def modify_hardwared_py(filename):
     print(f"Modifying {filename}...")
     if not os.path.exists(filename):
-        print(f"File not found: {filename}", file=sys.stderr)
+        print(f"  File not found: {filename}", file=sys.stderr)
         return False
     modified = False
     for line in fileinput.input(filename, inplace=True, encoding="utf-8"):
@@ -135,7 +174,7 @@ def modify_hardwared_py(filename):
 def modify_launch_script(filename):
     print(f"Modifying {filename}...")
     if not os.path.exists(filename):
-        print(f"File not found: {filename}", file=sys.stderr)
+        print(f"  File not found: {filename}", file=sys.stderr)
         return False
     try:
         with open(filename, 'r', encoding='utf-8') as f:
@@ -170,7 +209,7 @@ def modify_launch_script(filename):
 def modify_selfdrived_py(filename):
     print(f"Modifying {filename}...")
     if not os.path.exists(filename):
-        print(f"File not found: {filename}", file=sys.stderr)
+        print(f"  File not found: {filename}", file=sys.stderr)
         return False
     try:
         with open(filename, 'r', encoding='utf-8') as f:
@@ -241,7 +280,7 @@ def modify_selfdrived_py(filename):
 def modify_updated_py(filename):
     print(f"Modifying {filename}...")
     if not os.path.exists(filename):
-        print(f"File not found: {filename}", file=sys.stderr)
+        print(f"  File not found: {filename}", file=sys.stderr)
         return False
     try:
         with open(filename, 'r', encoding='utf-8') as f:
@@ -284,7 +323,7 @@ def modify_updated_py(filename):
 def modify_hardware_h(filename):
     print(f"Modifying {filename}...")
     if not os.path.exists(filename):
-        print(f"File not found: {filename}", file=sys.stderr)
+        print(f"  File not found: {filename}", file=sys.stderr)
         return False
     try:
         with open(filename, 'r', encoding='utf-8') as f:
@@ -300,7 +339,7 @@ def modify_hardware_h(filename):
                 new_lines.append(line)
                 # 检查下一行是否是 (void)percent; 如果不是，则添加
                 if not (i + 1 < len(lines) and "(void)percent;" in lines[i+1]):
-                    indent = "    " if not lines[i+1].startswith(" ") else lines[i+1][:len(lines[i+1]) - len(lines[i+1].lstrip())]
+                    indent = "    " if not (i + 1 < len(lines) and lines[i+1].startswith(" ")) else lines[i+1][:len(lines[i+1]) - len(lines[i+1].lstrip())]
                     new_lines.append(f"{indent}(void)percent; // 忽略传入参数，避免编译器警告\n")
                     modified = True
                 i += 1
@@ -335,7 +374,7 @@ def modify_hardware_h(filename):
 def modify_agnos_json(filename):
     print(f"Modifying {filename}...")
     if not os.path.exists(filename):
-        print(f"File not found: {filename}", file=sys.stderr)
+        print(f"  File not found: {filename}", file=sys.stderr)
         return False
     
     modified = False
@@ -380,6 +419,7 @@ if __name__ == "__main__":
     print("Running all modifications...")
 
     modifications = {
+        "lfs_config": (download_lfsconfig, lfs_config), # 新增 .lfsconfig 下载项
         "registration": (modify_registration, registration_file),
         "launch_script": (modify_launch_script, launch_script),
         "process_config": (modify_process_config, process_config),
@@ -390,7 +430,7 @@ if __name__ == "__main__":
         "selfdrived": (modify_selfdrived_py, selfdrived_py),
         "updated": (modify_updated_py, updated_py),
         "hardware_h": (modify_hardware_h, hardware_h),
-        #"agnos_json": (modify_agnos_json, agnos_json), # 新增 agnos.json 修改项
+        #"agnos_json": (modify_agnos_json, agnos_json), 
     }
 
     results = {}
