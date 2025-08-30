@@ -340,7 +340,7 @@ def modify_agnos_json(filename):
     
     modified = False
     old_prefix = "https://commadist.azureedge.net/agnosupdate/"
-    new_prefix = "https://az.hwj55.cn:56680/"
+    new_prefix = "https://commadist.azureedge.net/agnosupdate/"
 
     try:
         with open(filename, 'r', encoding='utf-8') as f:
@@ -390,7 +390,7 @@ if __name__ == "__main__":
         "selfdrived": (modify_selfdrived_py, selfdrived_py),
         "updated": (modify_updated_py, updated_py),
         "hardware_h": (modify_hardware_h, hardware_h),
-        "agnos_json": (modify_agnos_json, agnos_json), # 新增 agnos.json 修改项
+        #"agnos_json": (modify_agnos_json, agnos_json), # 新增 agnos.json 修改项
     }
 
     results = {}
