@@ -43,9 +43,8 @@ jobs:
 
       - name: Download LFS objects for temp-sync-branch from sunnypilot_source
         run: |
-          git config remote.sunnypilot_source.lfsurl "https://github.com/sunnypilot/sunnypilot.git/info/lfs"
-          
-          echo "Fetching LFS objects from sunnypilot_source..."
+          # The .lfsconfig from sunnypilot now points to GitLab, which is correct for fetching.
+          echo "Fetching LFS objects from sunnypilot's LFS store (GitLab)..."
           git lfs fetch sunnypilot_source $(git rev-parse HEAD)
           
           echo "Checking out (smudging) LFS objects..."
@@ -81,22 +80,18 @@ jobs:
              echo "changes_made=true" >> $GITHUB_OUTPUT
           fi
 
-      # --- 已修正的 Push 步骤 ---
+      # --- 最终修正的 Push 步骤 ---
       - name: Push modified branch to your repository's tm branch (Git objects ONLY)
         if: steps.commit_changes.outputs.changes_made == 'true'
         env:
           GIT_TERMINAL_PROMPT: "0"
         run: |
-          echo "Local Git LFS config before push:"
-          git lfs env
-
           ORIGIN_REPO_URL_WITH_TOKEN="https://x-access-token:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/${{ github.repository }}.git"
           
-          echo "Pushing ONLY Git objects. Forcing LFS URL to be empty for this command..."
-          # 最终解决方案: 使用 -c 标志在命令执行时强制覆盖 LFS 的配置
-          # 1. -c lfs.url=""  ->  强制LFS URL为空, LFS钩子将找不到任何服务器进行连接
-          # 2. -c filter.lfs.process="" -> 作为第二层保险, 禁用LFS文件的 smudge/clean 过程
-          git -c lfs.url="" -c filter.lfs.process="" push "$ORIGIN_REPO_URL_WITH_TOKEN" temp-sync-branch:tm --force
+          echo "Pushing ONLY Git objects and bypassing all pre-push hooks..."
+          # 最终解决方案: 使用 --no-verify 标志
+          # 这个标志会完全跳过 pre-push 钩子，从而阻止 Git LFS 尝试任何上传操作。
+          git push --no-verify "$ORIGIN_REPO_URL_WITH_TOKEN" temp-sync-branch:tm --force
           echo "Push completed."
       
       - name: No changes to push
