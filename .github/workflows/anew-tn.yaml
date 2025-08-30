@@ -1,4 +1,4 @@
-# 文件名: .github/workflows/sync-tn-to-tm.yaml
+# 文件名: .github/workflows/anew-tn.yaml (或您使用的任何名称)
 name: AAA Sync sunnypilot tn to my tm
 on:
   schedule:
@@ -28,7 +28,6 @@ jobs:
       - name: Install Git LFS client and initialize
         run: |
           sudo apt-get update -q && sudo apt-get install -y git-lfs
-          # Initialize LFS, but we will skip the smudge for origin checkout
           git lfs install --skip-smudge
 
       - name: Add sunnypilot remote and fetch its tn branch
@@ -42,10 +41,9 @@ jobs:
           echo "Checked out sunnypilot/tn content. Checking for .lfsconfig:"
           ls -l .lfsconfig || echo ".lfsconfig not found initially (will be created by script)."
 
+      # --- 已修正的部分 ---
+      # 移除了无效的空 env: 块
       - name: Download LFS objects for temp-sync-branch from sunnypilot_source
-        env:
-          # Optional: useful for debugging LFS fetches
-          # GIT_LFS_TRACE_HTTP: "1" 
         run: |
           # Ensure LFS fetch uses the correct remote's endpoint
           git config remote.sunnypilot_source.lfsurl "https://github.com/sunnypilot/sunnypilot.git/info/lfs"
@@ -62,7 +60,6 @@ jobs:
       - name: Apply custom modifications (including .lfsconfig download)
         run: |
           echo "Running Python script to apply modifications..."
-          # This script will re-download/overwrite .lfsconfig, ensuring it's the latest from the URL
           python /tmp/workflow_scripts/apply_modifications.py
           echo "Python script finished. Final check on .lfsconfig:"
           cat .lfsconfig
@@ -73,7 +70,6 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           
-          # Remove cached workflow files so they are not part of the commit
           git rm --cached -r .github/workflows || true
           
           git add --all .
@@ -85,7 +81,6 @@ jobs:
              echo "No effective changes to commit."
              echo "changes_made=false" >> $GITHUB_OUTPUT
           else
-             # .lfsconfig is now part of the commit
              git commit -m "Sync from sunnypilot/tn and apply custom modifications"
              echo "Changes committed."
              echo "changes_made=true" >> $GITHUB_OUTPUT
@@ -99,10 +94,6 @@ jobs:
           ORIGIN_REPO_URL_WITH_TOKEN="https://x-access-token:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/${{ github.repository }}.git"
           
           echo "Pushing ONLY Git objects (commits, trees) to origin/tm..."
-          # We use a standard git push. The pre-push hook for LFS will trigger,
-          # but since there is no lfsurl for origin and .lfsconfig points to sunnypilot,
-          # it should not attempt to push to your repository.
-          # To be absolutely safe, we can explicitly skip the LFS push hook.
           git -c filter.lfs.process="" push "$ORIGIN_REPO_URL_WITH_TOKEN" temp-sync-branch:tm --force
           echo "Push completed."
       
