@@ -1,4 +1,4 @@
-# 文件名: .github/workflows/anew-tn.yaml (或您使用的任何名称)
+# 文件名: .github/workflows/sync-tn-to-tm.yaml
 name: AAA Sync sunnypilot tn to my tm
 on:
   schedule:
@@ -41,19 +41,14 @@ jobs:
           echo "Checked out sunnypilot/tn content. Checking for .lfsconfig:"
           ls -l .lfsconfig || echo ".lfsconfig not found initially (will be created by script)."
 
-      # --- 已修正的部分 ---
-      # 移除了无效的空 env: 块
       - name: Download LFS objects for temp-sync-branch from sunnypilot_source
         run: |
-          # Ensure LFS fetch uses the correct remote's endpoint
           git config remote.sunnypilot_source.lfsurl "https://github.com/sunnypilot/sunnypilot.git/info/lfs"
           
           echo "Fetching LFS objects from sunnypilot_source..."
-          # Fetch LFS objects for the current commit on this branch
           git lfs fetch sunnypilot_source $(git rev-parse HEAD)
           
           echo "Checking out (smudging) LFS objects..."
-          # This command replaces LFS pointers with the actual file content we just fetched
           git lfs checkout
           echo "LFS objects downloaded and checked out."
 
@@ -91,9 +86,16 @@ jobs:
         env:
           GIT_TERMINAL_PROMPT: "0"
         run: |
+          # 关键步骤：在推送前临时删除 .lfsconfig 文件。
+          # 这个文件已经被包含在我们要推送的 commit 中了，所以最终会出现在你的远程分支上。
+          # 临时删除它只是为了防止 git push 命令在执行时读取其内容，从而避免触发 SSH 连接。
+          echo "Temporarily removing .lfsconfig to prevent SSH connection attempt during push..."
+          rm -f .lfsconfig
+
           ORIGIN_REPO_URL_WITH_TOKEN="https://x-access-token:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/${{ github.repository }}.git"
           
           echo "Pushing ONLY Git objects (commits, trees) to origin/tm..."
+          # 为保险起见，我们仍然保留 -c filter.lfs.process=""，双重保证 LFS 不会上传。
           git -c filter.lfs.process="" push "$ORIGIN_REPO_URL_WITH_TOKEN" temp-sync-branch:tm --force
           echo "Push completed."
       
