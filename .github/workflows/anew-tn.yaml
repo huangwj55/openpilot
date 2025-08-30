@@ -81,22 +81,22 @@ jobs:
              echo "changes_made=true" >> $GITHUB_OUTPUT
           fi
 
+      # --- 已修正的 Push 步骤 ---
       - name: Push modified branch to your repository's tm branch (Git objects ONLY)
         if: steps.commit_changes.outputs.changes_made == 'true'
         env:
           GIT_TERMINAL_PROMPT: "0"
         run: |
-          # 关键步骤：在推送前临时删除 .lfsconfig 文件。
-          # 这个文件已经被包含在我们要推送的 commit 中了，所以最终会出现在你的远程分支上。
-          # 临时删除它只是为了防止 git push 命令在执行时读取其内容，从而避免触发 SSH 连接。
-          echo "Temporarily removing .lfsconfig to prevent SSH connection attempt during push..."
-          rm -f .lfsconfig
+          echo "Local Git LFS config before push:"
+          git lfs env
 
           ORIGIN_REPO_URL_WITH_TOKEN="https://x-access-token:${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/${{ github.repository }}.git"
           
-          echo "Pushing ONLY Git objects (commits, trees) to origin/tm..."
-          # 为保险起见，我们仍然保留 -c filter.lfs.process=""，双重保证 LFS 不会上传。
-          git -c filter.lfs.process="" push "$ORIGIN_REPO_URL_WITH_TOKEN" temp-sync-branch:tm --force
+          echo "Pushing ONLY Git objects. Forcing LFS URL to be empty for this command..."
+          # 最终解决方案: 使用 -c 标志在命令执行时强制覆盖 LFS 的配置
+          # 1. -c lfs.url=""  ->  强制LFS URL为空, LFS钩子将找不到任何服务器进行连接
+          # 2. -c filter.lfs.process="" -> 作为第二层保险, 禁用LFS文件的 smudge/clean 过程
+          git -c lfs.url="" -c filter.lfs.process="" push "$ORIGIN_REPO_URL_WITH_TOKEN" temp-sync-branch:tm --force
           echo "Push completed."
       
       - name: No changes to push
