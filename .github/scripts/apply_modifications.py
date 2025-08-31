@@ -1,9 +1,7 @@
 import os
 import sys
+import re
 import fileinput
-import json # 导入json库用于处理agnos.json
-import urllib.request # 导入urllib库用于下载文件
-import urllib.error   # 导入urllib库用于处理错误
 
 # --- 文件路径 ---
 repo_root = os.environ.get('GITHUB_WORKSPACE', '.')  # 默认为当前目录
@@ -12,437 +10,266 @@ launch_script = os.path.join(repo_root, "launch_openpilot.sh")
 process_config = os.path.join(repo_root, "system/manager/process_config.py")
 long_mpc = os.path.join(repo_root, "selfdrive/controls/lib/longitudinal_mpc_lib/long_mpc.py")
 pandad_py = os.path.join(repo_root, "selfdrive/pandad/pandad.py")
-pandad_cc = os.path.join(repo_root, "selfdrive/pandad/pandad.cc")
 hardwared_py = os.path.join(repo_root, "system/hardware/hardwared.py")
-hardware_h = os.path.join(repo_root, "system/hardware/tici/hardware.h")
+# 🆕 新增：selfdrived.py 的文件路径
 selfdrived_py = os.path.join(repo_root, "selfdrive/selfdrived/selfdrived.py")
-updated_py = os.path.join(repo_root, "system/updated/updated.py")
-agnos_json = os.path.join(repo_root, "system/hardware/tici/agnos.json")
-lfs_config = os.path.join(repo_root, ".lfsconfig") # 新增 .lfsconfig 路径
-
-# --- Helper for status printing ---
-def print_status(filename, modified, message_if_modified, message_if_not_modified="already in desired state"):
-    # 如果文件名是URL，则只显示基础名称
-    display_name = os.path.basename(filename) if not filename.startswith("http") else filename.split('/')[-1]
-    
-    if modified:
-        print(f"  {message_if_modified}")
-    else:
-        print(f"  {display_name} {message_if_not_modified}.")
 
 
-# --- 下载函数 ---
-def download_lfsconfig(filename):
-    """
-    从指定URL下载.lfsconfig文件并保存到仓库根目录.
-    """
-    url = "https://github.com/sunnypilot/sunnypilot/raw/refs/heads/tn/.lfsconfig"
-    print(f"Downloading {os.path.basename(filename)} from {url}...")
-    
-    try:
-        # 发送请求并获取响应内容
-        with urllib.request.urlopen(url) as response:
-            if response.status != 200:
-                print(f"  Error: Failed to download file. Status code: {response.status}", file=sys.stderr)
-                return False
-            content = response.read()
-        
-        # 将内容写入本地文件 (覆盖)
-        with open(filename, 'wb') as f:
-            f.write(content)
-            
-        print_status(url, True, f"Successfully downloaded and saved to {os.path.basename(filename)}.")
-        return True
-
-    except urllib.error.URLError as e:
-        print(f"  Error downloading file: {e.reason}", file=sys.stderr)
-        return False
-    except IOError as e:
-        print(f"  Error writing to file {filename}: {e}", file=sys.stderr)
-        return False
-    except Exception as e:
-        print(f"  An unexpected error occurred during download: {e}", file=sys.stderr)
-        return False
-
-
-# --- 修改函数 (fileinput 适用于简单的单行替换) ---
-
+# --- Registration.py 修改 ---
 def modify_registration(filename):
     print(f"Modifying {filename}...")
     if not os.path.exists(filename):
-        print(f"  File not found: {filename}", file=sys.stderr)
+        print(f"File not found: {filename}", file=sys.stderr)
         return False
-    modified = False
+
+    modified_imei1 = False
+    modified_imei2 = False
+    modified_alert = False
+
     for line in fileinput.input(filename, inplace=True, encoding="utf-8"):
+        line_out = line
+        indent = line[:len(line) - len(line.lstrip())]
         stripped_line = line.strip()
+
         if stripped_line == "imei1: str | None = None":
-            print(line.replace(stripped_line, "imei1='865420071781912'"), end='')
-            modified = True
+            line_out = f"{indent}imei1='865420071781912'\n"
+            modified_imei1 = True
         elif stripped_line == "imei2: str | None = None":
-            print(line.replace(stripped_line, "imei2='865420071781904'"), end='')
-            modified = True
-        elif 'set_offroad_alert("Offroad_UnofficialHardware"' in line and not stripped_line.startswith("#"):
-            print("#" + line, end='')
-            modified = True
-        else:
-            print(line, end='')
-    print_status(filename, modified, "IMEI and/or alert modified.")
+            line_out = f"{indent}imei2='865420071781904'\n"
+            modified_imei2 = True
+        elif 'set_offroad_alert("Offroad_UnofficialHardware"' in line and not line.lstrip().startswith("#"):
+            line_out = f"{indent}#{line.lstrip()}"
+            if not line_out.endswith('\n') and line.endswith('\n'):
+                line_out += '\n'
+            modified_alert = True
+        
+        print(line_out, end='')
+    
+    if modified_imei1 or modified_imei2 or modified_alert:
+        print(f"  IMEI1 changed: {modified_imei1}, IMEI2 changed: {modified_imei2}, Alert changed: {modified_alert}")
+        return True
+    
+    return True # 假设即使没有修改，文件也可能已经是目标状态
+
+
+# --- launch_openpilot.sh 插入环境变量 ---
+def modify_launch_script(filename):
+    print(f"Modifying {filename}...")
+    if not os.path.exists(filename):
+        print(f"File not found: {filename}", file=sys.stderr)
+        return False
+
+    lines_to_insert = [
+        "export API_HOST=https://api.konik.ai\n",
+        "export ATHENA_HOST=wss://athena.konik.ai\n",
+        "#export MAPS_HOST=https://api.konik.ai/maps\n",
+        "export MAPBOX_TOKEN='pk.eyJ1IjoibXJvbmVjYyIsImEiOiJjbHhqbzlkbTYxNXUwMmtzZjdoMGtrZnVvIn0.SC7GNLtMFUGDgC2bAZcKzg'\n"
+    ]
+
+    with open(filename, 'r', encoding='utf-8') as f:
+        content = f.readlines()
+
+    all_present = all(line_to_check in content for line_to_check in lines_to_insert)
+    
+    if all_present:
+        print("  Environment lines already present, skipping insertion.")
+        return True
+
+    content_without_inserts = [l for l in content if l not in lines_to_insert]
+    
+    idx = 1 if content_without_inserts and content_without_inserts[0].startswith("#!") else 0
+    
+    new_content = content_without_inserts[:idx] + lines_to_insert + content_without_inserts[idx:]
+    with open(filename, 'w', encoding='utf-8') as f:
+        f.writelines(new_content)
+    print("  Environment lines inserted/updated.")
     return True
 
+# ✅ 修改 process_config.py 中注释两个进程
 def modify_process_config(filename):
     print(f"Modifying {filename}...")
     if not os.path.exists(filename):
-        print(f"  File not found: {filename}", file=sys.stderr)
+        print(f"File not found: {filename}", file=sys.stderr)
         return False
     modified = False
     for line in fileinput.input(filename, inplace=True, encoding="utf-8"):
-        if ('PythonProcess("dmonitoringmodeld"' in line or 'PythonProcess("dmonitoringd"' in line) and not line.strip().startswith("#"):
-            print("#" + line, end='')
+        indent = line[:len(line) - len(line.lstrip())]
+        content_part = line.lstrip()
+        
+        if 'PythonProcess("dmonitoringmodeld"' in line and not content_part.startswith("#"):
+            print(f"{indent}#{content_part}", end='')
+            modified = True
+        elif 'PythonProcess("dmonitoringd"' in line and not content_part.startswith("#"):
+            print(f"{indent}#{content_part}", end='')
             modified = True
         else:
             print(line, end='')
-    print_status(filename, modified, "dmonitoring processes commented.")
+    if modified:
+        print("  dmonitoringmodeld or dmonitoringd commented.")
     return True
 
+# ✅ 修改 long_mpc.py 中 STOP_DISTANCE
 def modify_long_mpc(filename):
     print(f"Modifying {filename}...")
     if not os.path.exists(filename):
-        print(f"  File not found: {filename}", file=sys.stderr)
+        print(f"File not found: {filename}", file=sys.stderr)
         return False
     modified = False
     for line in fileinput.input(filename, inplace=True, encoding="utf-8"):
         if 'STOP_DISTANCE' in line and '=' in line and not line.strip().startswith("#"):
             if line.strip() != "STOP_DISTANCE = 4.5":
-                print(line.split('=')[0] + "= 4.5\n", end='')
+                indent = line[:len(line) - len(line.lstrip())]
+                print(f"{indent}STOP_DISTANCE = 4.5\n", end='')
                 modified = True
             else:
                 print(line, end='')
         else:
             print(line, end='')
-    print_status(filename, modified, "STOP_DISTANCE changed to 4.5.")
+    if modified:
+        print("  STOP_DISTANCE changed to 4.5.")
     return True
 
+# 🆕 修改 pandad.py
 def modify_pandad_py(filename):
     print(f"Modifying {filename}...")
     if not os.path.exists(filename):
-        print(f"  File not found: {filename}", file=sys.stderr)
+        print(f"File not found: {filename}", file=sys.stderr)
         return False
     modified = False
     for line in fileinput.input(filename, inplace=True, encoding="utf-8"):
         if 'if time.monotonic() < 35.:' in line and 'if time.monotonic() < 45.:' not in line:
-            print(line.replace('35.', '45.'), end='')
+            line = line.replace('35.', '45.')
             modified = True
-        else:
-            print(line, end='')
-    print_status(filename, modified, "time.monotonic limit changed from 35 to 45.")
+        print(line, end='')
+    if modified:
+        print("  time.monotonic limit changed from 35 to 45.")
     return True
 
-def modify_pandad_cc(filename):
-    print(f"Modifying {filename}...")
-    if not os.path.exists(filename):
-        print(f"  File not found: {filename}", file=sys.stderr)
-        return False
-    modified = False
-    for line in fileinput.input(filename, inplace=True, encoding="utf-8"):
-        if line.strip() == '#define MAX_IR_PANDA_VAL 50':
-            print("#define MAX_IR_PANDA_VAL 0\n", end='')
-            modified = True
-        else:
-            print(line, end='')
-    print_status(filename, modified, "MAX_IR_PANDA_VAL changed to 0.")
-    return True
-
+# 🆕 修改 hardwared.py
 def modify_hardwared_py(filename):
     print(f"Modifying {filename}...")
     if not os.path.exists(filename):
-        print(f"  File not found: {filename}", file=sys.stderr)
+        print(f"File not found: {filename}", file=sys.stderr)
         return False
     modified = False
     for line in fileinput.input(filename, inplace=True, encoding="utf-8"):
         target_str = 'set_offroad_alert_if_changed("Offroad_StorageMissing", True)'
-        if target_str in line and not line.strip().startswith(("#", "pass#")):
-            print(line.replace(target_str, "pass#" + target_str), end='')
+        if target_str in line and not line.lstrip().startswith("#") and not line.lstrip().startswith("pass#"):
+            indent = line[:len(line) - len(line.lstrip())]
+            original_eol = "\n" if line.endswith("\n") else ""
+            line = f"{indent}pass#{target_str}{original_eol}"
             modified = True
-        else:
-            print(line, end='')
-    print_status(filename, modified, "Offroad_StorageMissing alert commented with pass#.")
+        print(line, end='')
+    if modified:
+        print(f"  '{target_str}' commented with pass#.")
     return True
 
-
-# --- 修改函数 (read/write 适用于多行、复杂或上下文相关的修改) ---
-
-def modify_launch_script(filename):
-    print(f"Modifying {filename}...")
-    if not os.path.exists(filename):
-        print(f"  File not found: {filename}", file=sys.stderr)
-        return False
-    try:
-        with open(filename, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        
-        lines_to_insert = [
-            "export API_HOST=https://api.konik.ai\n",
-            "export ATHENA_HOST=wss://athena.konik.ai\n",
-            "#export MAPS_HOST=https://api.konik.ai/maps\n",
-            "export MAPBOX_TOKEN='pk.eyJ1IjoibXJvbmVjYyIsImEiOiJjbHhqbzlkbTYxNXUwMmtzZjdoMGtrZnVvIn0.SC7GNLtMFUGDgC2bAZcKzg'\n"
-        ]
-
-        # 检查是否所有行都已存在，如果都存在则认为已经修改过
-        if all(l in lines for l in lines_to_insert):
-            print_status(filename, False, "")
-            return True
-
-        # 过滤掉旧的可能存在的插入行，以实现幂等性
-        content_without_inserts = [l for l in lines if l not in lines_to_insert]
-        idx = 1 if content_without_inserts and content_without_inserts[0].startswith("#!") else 0
-        new_content = content_without_inserts[:idx] + lines_to_insert + content_without_inserts[idx:]
-
-        with open(filename, 'w', encoding='utf-8') as f:
-            f.writelines(new_content)
-        
-        print_status(filename, True, "Environment lines inserted/updated.")
-        return True
-    except Exception as e:
-        print(f"  Error modifying {filename}: {e}", file=sys.stderr)
-        return False
-
+# 🆕 新增：修改 selfdrived.py 以关闭 DM 相关报错
 def modify_selfdrived_py(filename):
-    print(f"Modifying {filename}...")
+    print(f"Modifying {filename} to close DM errors...")
     if not os.path.exists(filename):
-        print(f"  File not found: {filename}", file=sys.stderr)
+        print(f"File not found: {filename}", file=sys.stderr)
         return False
+
+    # 由于修改包含添加行和替换多行，使用 read/write 模式比 fileinput 更稳妥
     try:
         with open(filename, 'r', encoding='utf-8') as f:
             lines = f.readlines()
-        
+
         new_lines = []
         modified = False
+        
         i = 0
         while i < len(lines):
             line = lines[i]
+            indent = line[:len(line) - len(line.lstrip())]
             stripped_line = line.strip()
 
-            # 🆕 修改点 1: 修改 if SIMULATION 块
-            if stripped_line == "if SIMULATION:":
-                # 检查下一行是否是我们期望修改的行，确保上下文正确
-                if i + 1 < len(lines) and "ignore += ['driverCameraState', 'managerState']" in lines[i+1]:
-                    indent = line[:len(line) - len(line.lstrip())]
-                    next_indent = lines[i+1][:len(lines[i+1]) - len(lines[i+1].lstrip())]
-                    
-                    # 添加修改后的代码块
-                    new_lines.append(f"{indent}if True:\n")
-                    new_lines.append(f"{next_indent}ignore += ['driverCameraState', 'managerState', 'driverMonitoringState']\n")
-                    
+            # --- 修改点 1: 增加 ignore 列表 ---
+            # ignore = self.sensor_packets + self.gps_packets + ['alertDebug']
+            target_line_1 = "ignore = self.sensor_packets + self.gps_packets + ['alertDebug']"
+            line_to_add_1 = "ignore += ['driverCameraState', 'managerState', 'driverMonitoringState']"
+            
+            new_lines.append(line) # 先把当前行加进去
+
+            if target_line_1 in stripped_line:
+                # 检查下一行是否已经是我们要添加的内容，避免重复添加
+                if i + 1 < len(lines) and line_to_add_1 in lines[i+1]:
+                    pass # 已经存在，什么都不做
+                else:
+                    new_lines.append(f"{indent}{line_to_add_1}\n")
                     modified = True
-                    i += 2  # 跳过原始的2行
-                    continue
-
-            # 幂等性检查: 如果代码块已经被修改，则直接跳过
-            if stripped_line == "if True:":
-                if i + 1 < len(lines) and "ignore += ['driverCameraState', 'managerState', 'driverMonitoringState']" in lines[i+1]:
-                    new_lines.append(line)
-                    new_lines.append(lines[i+1])
-                    i += 2 # 跳过已修改的2行
-                    continue
             
-            # 修改点 2: 注释其他报错
-            lines_to_comment = [
-                "self.events.add(EventName.commIssue)",
-                "self.events.add(EventName.commIssueAvgFreq)",
-                "self.events.add(EventName.cameraMalfunction)",
-                'cloudlog.event("process_not_running", not_running=not_running, error=True)',
-                'self.events.add(EventName.processNotRunning)',
-                'self.events.add(EventName.sensorDataInvalid)',
-                'self.events.add(EventName.noGps)',
-            ]
-            
-            is_line_to_comment = stripped_line in lines_to_comment
-
-            if is_line_to_comment and not line.lstrip().startswith(("pass", "#")):
-                indent = line[:len(line) - len(line.lstrip())]
-                new_lines.append(f"{indent}pass  # {stripped_line}\n")
-                modified = True
-            else:
-                new_lines.append(line)
-            
-            i += 1
-            
-        if modified:
-            with open(filename, 'w', encoding='utf-8') as f:
-                f.writelines(new_lines)
-        
-        print_status(filename, modified, "SIMULATION block and specified alerts modified.")
-        return True
-    except Exception as e:
-        print(f"  Error modifying {filename}: {e}", file=sys.stderr)
-        return False
-
-def modify_updated_py(filename):
-    print(f"Modifying {filename}...")
-    if not os.path.exists(filename):
-        print(f"  File not found: {filename}", file=sys.stderr)
-        return False
-    try:
-        with open(filename, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        
-        new_lines = []
-        modified = False
-        i = 0
-        while i < len(lines):
-            line = lines[i]
-            stripped_line = line.strip()
-
-            if stripped_line == 'elif failed_count > 0:':
-                if i > 0 and not lines[i-1].strip() == "# 关闭长时间不联网限制":
-                    indent = line[:len(line) - len(line.lstrip())]
-                    new_lines.append(f"{indent}# 关闭长时间不联网限制\n")
-                    # Comment out the next 6 lines
-                    for j in range(6):
-                        if i + j < len(lines):
-                            block_line = lines[i+j]
-                            block_indent = block_line[:len(block_line) - len(block_line.lstrip())]
-                            new_lines.append(f"{block_indent}# {block_line.lstrip()}")
+            # --- 修改点 2: 注释 commIssue ---
+            # if not self.sm.all_alive():
+            elif "if not self.sm.all_alive():" in stripped_line:
+                # 期望的下一行是 self.events.add(EventName.commIssue)
+                if i + 1 < len(lines) and "self.events.add(EventName.commIssue)" in lines[i+1]:
+                    next_line_indent = lines[i+1][:len(lines[i+1]) - len(lines[i+1].lstrip())]
+                    new_lines.append(f"{next_line_indent}pass # {lines[i+1].strip()}\n")
+                    i += 1 # 跳过原始的 self.events.add 行
                     modified = True
-                    i += 6
-                    continue
             
-            new_lines.append(line)
+            # elif not self.sm.all_freq_ok():
+            elif "elif not self.sm.all_freq_ok():" in stripped_line:
+                if i + 1 < len(lines) and "self.events.add(EventName.commIssueAvgFreq)" in lines[i+1]:
+                    next_line_indent = lines[i+1][:len(lines[i+1]) - len(lines[i+1].lstrip())]
+                    new_lines.append(f"{next_line_indent}pass # {lines[i+1].strip()}\n")
+                    i += 1
+                    modified = True
+
+            # else: (针对 commIssue 的 else)
+            elif stripped_line == "else:" and "commIssue" in lines[i+1]:
+                 if i + 1 < len(lines) and "self.events.add(EventName.commIssue)" in lines[i+1]:
+                    next_line_indent = lines[i+1][:len(lines[i+1]) - len(lines[i+1].lstrip())]
+                    new_lines.append(f"{next_line_indent}pass # {lines[i+1].strip()}\n")
+                    i += 1
+                    modified = True
+
+            # --- 修改点 3: 注释 cameraMalfunction ---
+            # if not self.sm.all_alive(self.camera_packets):
+            elif "if not self.sm.all_alive(self.camera_packets):" in stripped_line:
+                 if i + 1 < len(lines) and "self.events.add(EventName.cameraMalfunction)" in lines[i+1]:
+                    next_line_indent = lines[i+1][:len(lines[i+1]) - len(lines[i+1].lstrip())]
+                    new_lines.append(f"{next_line_indent}pass # {lines[i+1].strip()}\n")
+                    i += 1
+                    modified = True
+            
             i += 1
 
         if modified:
             with open(filename, 'w', encoding='utf-8') as f:
                 f.writelines(new_lines)
-        
-        print_status(filename, modified, "Connectivity limit block commented out.")
-        return True
-    except Exception as e:
-        print(f"  Error modifying {filename}: {e}", file=sys.stderr)
-        return False
+            print("  selfdrived.py modified to ignore DM/camera/comm issues.")
 
-def modify_hardware_h(filename):
-    print(f"Modifying {filename}...")
-    if not os.path.exists(filename):
-        print(f"  File not found: {filename}", file=sys.stderr)
-        return False
-    try:
-        with open(filename, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-            
-        new_lines = []
-        modified = False
-        i = 0
-        while i < len(lines):
-            line = lines[i]
-
-            if "static void set_ir_power(int percent) {" in line:
-                new_lines.append(line)
-                # 检查下一行是否是 (void)percent; 如果不是，则添加
-                if not (i + 1 < len(lines) and "(void)percent;" in lines[i+1]):
-                    indent = "    " if not (i + 1 < len(lines) and lines[i+1].startswith(" ")) else lines[i+1][:len(lines[i+1]) - len(lines[i+1].lstrip())]
-                    new_lines.append(f"{indent}(void)percent; // 忽略传入参数，避免编译器警告\n")
-                    modified = True
-                i += 1
-                continue
-
-            elif "int value = util::map_val" in line:
-                # 检查前面是否已经添加了注释和强制设置为0的代码
-                if not (len(new_lines) > 0 and "// 强制设为 0" in new_lines[-1]):
-                    indent = line[:len(line) - len(line.lstrip())]
-                    new_lines.append(f"{indent}// 强制设为 0\n")
-                    new_lines.append(f'{indent}std::ofstream("/sys/class/leds/led:switch_2/brightness") << 0 << "\\n";\n')
-                    new_lines.append(f'{indent}std::ofstream("/sys/class/leds/led:torch_2/brightness") << 0 << "\\n";\n')
-                    new_lines.append(f'{indent}std::ofstream("/sys/class/leds/led:switch_2/brightness") << 0 << "\\n";\n')
-                    modified = True
-                i += 4 # 跳过原始的4行
-                continue
-
-            new_lines.append(line)
-            i += 1
-        
-        if modified:
-            with open(filename, 'w', encoding='utf-8') as f:
-                f.writelines(new_lines)
-
-        print_status(filename, modified, "IR power logic has been modified.")
         return True
 
     except Exception as e:
         print(f"  Error modifying {filename}: {e}", file=sys.stderr)
         return False
-
-def modify_agnos_json(filename):
-    print(f"Modifying {filename}...")
-    if not os.path.exists(filename):
-        print(f"  File not found: {filename}", file=sys.stderr)
-        return False
-    
-    modified = False
-    old_prefix = "https://commadist.azureedge.net/agnosupdate/"
-    new_prefix = "https://commadist.azureedge.net/agnosupdate/"
-
-    try:
-        with open(filename, 'r', encoding='utf-8') as f:
-            agnos_data = json.load(f) # 读取JSON数据
-        
-        for item in agnos_data:
-            # 修改主 URL
-            if "url" in item and item["url"].startswith(old_prefix):
-                item["url"] = item["url"].replace(old_prefix, new_prefix, 1) # 替换第一个匹配项
-                modified = True
-            
-            # 修改 alt 字段中的 URL (如果存在)
-            if "alt" in item and isinstance(item["alt"], dict) and "url" in item["alt"]:
-                if item["alt"]["url"].startswith(old_prefix):
-                    item["alt"]["url"] = item["alt"]["url"].replace(old_prefix, new_prefix, 1)
-                    modified = True
-        
-        if modified:
-            with open(filename, 'w', encoding='utf-8') as f:
-                # 使用 indent=2 使输出的JSON格式化，更易读
-                json.dump(agnos_data, f, indent=2, ensure_ascii=False) 
-            print_status(filename, modified, "Agnos download URLs updated.")
-        else:
-            print_status(filename, modified, "")
-        
-        return True
-    except json.JSONDecodeError as e:
-        print(f"  Error parsing JSON in {filename}: {e}", file=sys.stderr)
-        return False
-    except Exception as e:
-        print(f"  Error modifying {filename}: {e}", file=sys.stderr)
-        return False
-
 
 # --- 主入口 ---
-if __name__ == "__main__":
-    print("Running all modifications...")
+print("Running all modifications...")
 
-    modifications = {
-        "lfs_config": (download_lfsconfig, lfs_config), # 新增 .lfsconfig 下载项
-        "registration": (modify_registration, registration_file),
-        "launch_script": (modify_launch_script, launch_script),
-        "process_config": (modify_process_config, process_config),
-        "long_mpc": (modify_long_mpc, long_mpc),
-        "pandad_py": (modify_pandad_py, pandad_py),
-        "pandad_cc": (modify_pandad_cc, pandad_cc),
-        "hardwared_py": (modify_hardwared_py, hardwared_py),
-        "selfdrived": (modify_selfdrived_py, selfdrived_py),
-        "updated": (modify_updated_py, updated_py),
-        "hardware_h": (modify_hardware_h, hardware_h),
-        #"agnos_json": (modify_agnos_json, agnos_json), 
-    }
+results = [
+    modify_registration(registration_file),
+    modify_launch_script(launch_script),
+    modify_process_config(process_config), # 确保这个函数也被调用
+    modify_long_mpc(long_mpc),
+    modify_pandad_py(pandad_py),
+    modify_hardwared_py(hardwared_py),
+    modify_selfdrived_py(selfdrived_py), # 🆕 调用新增的函数
+]
 
-    results = {}
-    for name, (func, path) in modifications.items():
-        results[name] = func(path)
-
-    if all(results.values()):
-        print("\n✅ All modifications applied successfully or files were already in the desired state.")
-        sys.exit(0)
-    else:
-        print("\n❌ Some modifications may have failed or were not applicable.", file=sys.stderr)
-        failed_mods = [name for name, success in results.items() if not success]
-        if failed_mods:
-            print(f"  Potentially failed/unapplied modifications for: {', '.join(failed_mods)}", file=sys.stderr)
-        sys.exit(1)
+if all(results):
+    print("✅ All modifications applied successfully or files were already in the desired state.")
+    sys.exit(0)
+else:
+    print("❌ Some modifications may have failed or were not applicable.", file=sys.stderr)
+    failed_mods = [func_name for func_name, res_val in zip(
+        ["registration", "launch_script", "process_config", "long_mpc", "pandad_py", "hardwared_py", "selfdrived"], # 🆕 增加到错误报告列表
+        results
+    ) if not res_val]
+    if failed_mods:
+        print(f"  Potentially failed/unapplied modifications for: {', '.join(failed_mods)}", file=sys.stderr)
+    sys.exit(1)
