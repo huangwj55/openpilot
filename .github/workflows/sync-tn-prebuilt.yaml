@@ -1,8 +1,8 @@
 # 文件名: .github/workflows/sync-tn-to-tm.yaml
 name: AAA Sync sunnypilot tn-pb to my tm-pb
 on:
-  schedule:
-    - cron: '0 10 * * *'
+  #schedule:
+  #  - cron: '0 10 * * *'
   workflow_dispatch:
 
 jobs:
