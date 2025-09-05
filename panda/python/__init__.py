@@ -311,7 +311,7 @@ class Panda:
     context.open()
     try:
       for device in context.getDeviceList(skip_on_error=True):
-        if device.getVendorID() in cls.USB_VIDS and device.getProductID() in cls.USB_PIDS:
+            if device.getVendorID() == 0xbbaa and device.getProductID() in cls.USB_PIDS:
           try:
             this_serial = device.getSerialNumber()
           except Exception:
